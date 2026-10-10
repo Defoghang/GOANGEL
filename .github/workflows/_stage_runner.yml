@@ -1,0 +1,76 @@
+name: Stage Runner
+
+on:
+  workflow_call:
+    inputs:
+      stage:
+        required: true
+        type: string
+      seasons_lookback:
+        required: true
+        type: string
+      enrich_xg:
+        required: true
+        type: string
+      workers_per_key:
+        required: true
+        type: string
+      max_workers:
+        required: true
+        type: string
+      rate_limit_per_minute:
+        required: true
+        type: string
+      max_attempts_per_model:
+        required: true
+        type: string
+      is_retry:
+        required: true
+        type: string
+    secrets:
+      BZZOIRO_TOKENS:
+        required: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 357
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Verify secrets
+        env:
+          TOKENS: ${{ secrets.BZZOIRO_TOKENS }}
+        run: |
+          if [ -z "${TOKENS}" ]; then
+            echo "::error::BZZOIRO_TOKENS secret manquant ou vide"
+            exit 1
+          fi
+          echo "✅ BZZOIRO_TOKENS présent (len=${#TOKENS})"
+
+      - name: Run stage
+        env:
+          STAGE: ${{ inputs.stage }}
+          TOKENS: ${{ secrets.BZZOIRO_TOKENS }}
+          WORKERS_PER_KEY: ${{ inputs.workers_per_key }}
+          MAX_WORKERS: ${{ inputs.max_workers }}
+          RATE_LIMIT: ${{ inputs.rate_limit_per_minute }}
+          SEASONS: ${{ inputs.seasons_lookback }}
+          ENRICH: ${{ inputs.enrich_xg }}
+          MAX_ATTEMPTS: ${{ inputs.max_attempts_per_model }}
+          IS_RETRY: ${{ inputs.is_retry }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/run_stage.sh
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: log-${{ inputs.stage }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: training.log
+          retention-days: 30
+          if-no-files-found: warn
