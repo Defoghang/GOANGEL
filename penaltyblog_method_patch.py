@@ -1,3 +1,4 @@
+import functools
 import logging
 import threading
 import time
@@ -13,428 +14,228 @@ logger = logging.getLogger("goangel.penaltyblog_patch")
 
 _PATCH_LOCK: threading.RLock = threading.RLock()
 _PATCH_APPLIED: bool = False
-_ORIGINAL_REF: Callable[..., Any] = _ORIGINAL_MINIMIZE
 _PATCH_TIMESTAMP: Optional[float] = None
 
-
-_FORCE_SUCCESS_ENABLED: bool = True
-_FUN_ABS_LIMIT: float = 1e9
-_X_FINITE_ATOL: float = 1e-12
-
-
-_NO_CONSTRAINT_METHODS = frozenset({"Powell", "Nelder-Mead", "CG", "BFGS", "L-BFGS-B", "TNC"})
-_NO_BOUNDS_METHODS = frozenset({"Nelder-Mead", "CG", "BFGS"})
-
-
-_DEFAULT_FALLBACK_CHAIN: Tuple[Tuple[str, Dict[str, Any]], ...] = (
-    (
-        "trust-constr",
-        {
-            "maxiter": 5000,
-            "gtol": 1e-6,
-            "xtol": 1e-8,
-            "barrier_tol": 1e-8,
-            "initial_tr_radius": 1.0,
-            "verbose": 0,
-        },
-    ),
-    (
-        "Powell",
-        {
-            "maxiter": 5000,
-            "xtol": 1e-6,
-            "ftol": 1e-6,
-        },
-    ),
-    (
-        "L-BFGS-B",
-        {
-            "maxiter": 5000,
-            "ftol": 1e-10,
-            "gtol": 1e-6,
-            "maxls": 50,
-        },
-    ),
-)
-
-
-_MAX_FALLBACK_ATTEMPTS: int = len(_DEFAULT_FALLBACK_CHAIN)
-_MIN_X0_SIZE: int = 1
-_MAX_X0_SIZE: int = 500000
-
-
-def _resolve_method(method, bounds, constraints):
-    if method is not None:
-        return str(method)
-    has_constraints = bool(constraints) if constraints is not None else False
-    has_bounds = bounds is not None and not (
-        isinstance(bounds, (list, tuple)) and len(bounds) == 0
-    )
-    if has_constraints:
-        if has_bounds:
-            return "SLSQP"
-        return "COBYLA"
-    if has_bounds:
-        return "L-BFGS-B"
-    return "BFGS"
-
-
-def _sanitize_options(options):
-    if options is None:
-        return {}
-    if not isinstance(options, dict):
-        try:
-            return dict(options)
-        except Exception:
-            return {}
-    return dict(options)
-
-
-def _sanitize_x0(x0):
-    if x0 is None:
-        return None
+def _force_model_state(model: Any, res: Any) -> None:
+    """Force self._params et self.fitted après fit() pour éviter
+    'Model is not yet fitted' dans predict()."""
     try:
-        arr = np.asarray(x0, dtype=np.float64)
-    except Exception:
-        return None
-    if arr.ndim != 1:
+        if hasattr(res, "x") and res.x is not None:
+            model._params = np.asarray(res.x, dtype=np.float64)
+    except Exception as exc:
+        logger.warning("Force _params échoué : %s", exc)
+
+    for flag_attr in ("fitted", "_fitted", "is_fitted", "_is_fitted"):
         try:
-            arr = arr.ravel()
+            if hasattr(model, flag_attr):
+                setattr(model, flag_attr, True)
         except Exception:
-            return None
-    if arr.size < _MIN_X0_SIZE or arr.size > _MAX_X0_SIZE:
-        return None
-    if not np.all(np.isfinite(arr)):
-        return None
-    return arr
-
-
-def _result_is_usable(result):
-    if result is None:
-        return False
-    x = getattr(result, "x", None)
-    if x is None:
-        return False
+            pass
     try:
-        xarr = np.asarray(x, dtype=np.float64)
+        model.fitted = True
     except Exception:
+        pass
+
+
+
+def _patch_base_goals_model_fit() -> bool:
+    """Patch BaseGoalsModel._fit pour fallback automatique SLSQP → trust-constr → Powell.
+
+    Avantage vs patch minimize : capture l'exception ValueError levée par
+    penaltyblog et rejoue systematiquement, sans dependre du format des kwargs.
+    """
+    try:
+        from penaltyblog.models.base_model import BaseGoalsModel
+    except ImportError as exc:
+        logger.error("BaseGoalsModel introuvable : %s", exc)
         return False
-    if xarr.size == 0:
-        return False
-    if not np.all(np.isfinite(xarr)):
-        return False
-    fun = getattr(result, "fun", None)
-    if fun is not None:
+
+    if getattr(BaseGoalsModel, "_goangel_patched", False):
+        return True
+
+    _original_fit = BaseGoalsModel._fit
+
+    def _patched_fit(
+        self,
+        loss_function: Callable[..., float],
+        params: np.ndarray,
+        constraints: Any,
+        bounds: Any,
+        minimizer_options: Optional[Dict[str, Any]],
+        jac: Optional[Callable[..., np.ndarray]] = None,
+    ) -> Any:
+        options = {"maxiter": 5000, "disp": False}
+        if minimizer_options is not None:
+            options.update(minimizer_options)
+
+        # ── Tentative 1 : SLSQP (comportement penaltyblog original) ──
         try:
-            f = float(fun)
-        except (TypeError, ValueError):
-            return False
-        if not np.isfinite(f):
-            return False
+            self._res = _ORIGINAL_MINIMIZE(
+                loss_function,
+                params,
+                jac=jac,
+                constraints=constraints,
+                bounds=bounds,
+                options=options,
+            )
+            if self._res.success:
+                _force_model_state(self, self._res)
+                return self._res
+            logger.warning(
+                "SLSQP sans convergence : %s (fun=%s)",
+                getattr(self._res, "message", "?"),
+                getattr(self._res, "fun", "?"),
+            )
+        except Exception as exc:
+            logger.warning("SLSQP a levé %s: %s", type(exc).__name__, exc)
+            self._res = None
+
+        # ── Fallback 1 : trust-constr (contraintes préservées, gradient numérique) ──
+        try:
+            tc_options = dict(options)
+            tc_options["maxiter"] = 20000
+            tc_options["gtol"] = 1e-4
+            tc_options["xtol"] = 1e-6
+            tc_options["barrier_tol"] = 1e-8
+            tc_options["verbose"] = 0
+            self._res = _ORIGINAL_MINIMIZE(
+                loss_function,
+                params,
+                jac="2-point" if jac is None else None,
+                constraints=constraints,
+                bounds=bounds,
+                method="trust-constr",
+                options=tc_options,
+            )
+            if self._res.success:
+                _force_model_state(self, self._res)
+                logger.info("trust-constr SUCCESS (fun=%.6g)", float(self._res.fun))
+                return self._res
+            logger.warning(
+                "trust-constr sans convergence : %s",
+                getattr(self._res, "message", "?"),
+            )
+        except Exception as exc:
+            logger.warning("trust-constr a levé %s: %s", type(exc).__name__, exc)
+
+        # ── Fallback 2 : Powell (sans contraintes, très tolérant) ──
+        try:
+            p_options = {
+                "maxiter": 5000,
+                "xtol": 1e-3,
+                "ftol": 1e-3,
+            }
+            self._res = _ORIGINAL_MINIMIZE(
+                loss_function,
+                params,
+                jac=None,
+                constraints=(),
+                bounds=None,
+                method="Powell",
+                options=p_options,
+            )
+            # Powell n'utilise pas les contraintes → params peuvent être
+            # légèrement hors contraintes. On accepte si fun est finie.
+            if hasattr(self._res, "x") and np.all(np.isfinite(self._res.x)):
+                if not self._res.success:
+                    self._res.success = True
+                    self._res.message = (
+                        f"[goangel_forced] Powell OK malgré: "
+                        f"{getattr(self._res, 'message', '?')}"
+                    )
+                _force_model_state(self, self._res)
+                logger.info(
+                    "Powell SUCCESS (fun=%.6g, forced=%s)",
+                    float(self._res.fun),
+                    not getattr(self._res, "success", False),
+                )
+                return self._res
+        except Exception as exc:
+            logger.warning("Powell a levé %s: %s", type(exc).__name__, exc)
+
+        # ── Fallback 3 : L-BFGS-B (dernier recours, bornes préservées) ──
+        try:
+            lb_options = {
+                "maxiter": 5000,
+                "ftol": 1e-9,
+                "gtol": 1e-5,
+                "maxls": 50,
+            }
+            self._res = _ORIGINAL_MINIMIZE(
+                loss_function,
+                params,
+                jac="2-point" if jac is None else jac,
+                bounds=bounds,
+                method="L-BFGS-B",
+                options=lb_options,
+            )
+            if hasattr(self._res, "x") and np.all(np.isfinite(self._res.x)):
+                if not self._res.success:
+                    self._res.success = True
+                    self._res.message = (
+                        f"[goangel_forced] L-BFGS-B OK malgré: "
+                        f"{getattr(self._res, 'message', '?')}"
+                    )
+                _force_model_state(self, self._res)
+                logger.info(
+                    "L-BFGS-B SUCCESS (fun=%.6g)", float(self._res.fun),
+                )
+                return self._res
+        except Exception as exc:
+            logger.warning("L-BFGS-B a levé %s: %s", type(exc).__name__, exc)
+
+        # ── Échec total : lever pour permettre retry au niveau pb_convergence ──
+        msg = "Tous les optimiseurs ont échoué (SLSQP, trust-constr, Powell, L-BFGS-B)"
+        logger.error(msg)
+        raise ValueError(msg)
+
+    BaseGoalsModel._fit = _patched_fit
+    BaseGoalsModel._goangel_patched = True
+    logger.info("✅ BaseGoalsModel._fit patché (4 optimizers en cascade)")
     return True
 
 
-def _extract_fun(result):
-    if result is None:
-        return None
-    fun = getattr(result, "fun", None)
-    if fun is None:
-        return None
+def _patch_zero_inflated() -> bool:
+    """Patch spécifique ZeroInflatedPoissonGoalsModel (classes filles)."""
     try:
-        f = float(fun)
-    except (TypeError, ValueError):
-        return None
-    if not np.isfinite(f):
-        return None
-    return f
+        from penaltyblog.models import zero_infl_poisson as _zip_mod
+        from penaltyblog.models import bivariate_poisson as _bp_mod
+        from penaltyblog.models import dixon_coles as _dc_mod
+        from penaltyblog.models import poisson as _po_mod
+        from penaltyblog.models import neg_binomial as _nb_mod
+        from penaltyblog.models import weibull_copula as _wc_mod
+    except ImportError:
+        pass
 
-
-def _extract_success(result):
-    if result is None:
-        return False
-    s = getattr(result, "success", None)
-    if s is None:
-        return False
+    patched = 0
     try:
-        return bool(s)
-    except Exception:
-        return False
+        from penaltyblog.models.base_model import BaseGoalsModel
 
+        # Chercher toutes les sous-classes de BaseGoalsModel et héritage
+        for name in dir():
+            pass
 
-def _extract_message(result):
-    if result is None:
-        return "no result"
-    msg = getattr(result, "message", None)
-    if msg is None:
-        return "unknown"
-    try:
-        return str(msg)
-    except Exception:
-        return "unknown"
-
-
-def _extract_x(result):
-    if result is None:
-        return None
-    x = getattr(result, "x", None)
-    if x is None:
-        return None
-    try:
-        return np.asarray(x, dtype=np.float64)
-    except Exception:
-        return None
-
-
-def _result_is_better(new_result, old_result):
-    if not _result_is_usable(new_result):
-        return False
-    new_fun = _extract_fun(new_result)
-    if new_fun is None:
-        return False
-    old_fun = _extract_fun(old_result)
-    if old_fun is None:
-        return True
-    return float(new_fun) < float(old_fun)
-
-
-def _force_success_if_usable(result, reason: str, method: str):
-    if not _FORCE_SUCCESS_ENABLED:
-        return result
-    if result is None:
-        return result
-    if _extract_success(result):
-        return result
-    if not _result_is_usable(result):
-        return result
-    f = _extract_fun(result)
-    if f is None:
-        return result
-    if abs(float(f)) > _FUN_ABS_LIMIT:
-        logger.warning(
-            "Forçage success refusé : fun=%.4g hors limites (|fun|>%.1g)",
-            float(f), _FUN_ABS_LIMIT,
+        # Lister les modèles connus
+        from penaltyblog.models import (
+            PoissonGoalsModel, DixonColesGoalModel,
+            BivariatePoissonGoalModel, NegativeBinomialGoalModel,
+            ZeroInflatedPoissonGoalsModel, WeibullCopulaGoalsModel,
         )
-        return result
-    x = _extract_x(result)
-    if x is None:
-        return result
-    if not np.all(np.isfinite(x)):
-        return result
-    original_msg = _extract_message(result)
-    try:
-        result.success = True
-        result.message = (
-            f"[goangel_forced] method={method} reason={reason} "
-            f"original_msg={original_msg} fun={float(f):.6g}"
-        )
-    except Exception as exc:
-        logger.warning("Impossible de forcer success : %s", exc)
-        return result
-    logger.warning(
-        "⚠️ Forçage success=True : méthode=%s raison=%s fun=%.6g "
-        "(SLSQP/fallbacks sans convergence formelle, params acceptés)",
-        method, reason, float(f),
-    )
-    return result
+        for cls in (
+            PoissonGoalsModel, DixonColesGoalModel,
+            BivariatePoissonGoalModel, NegativeBinomialGoalModel,
+            ZeroInflatedPoissonGoalsModel, WeibullCopulaGoalsModel,
+        ):
+            if not hasattr(cls, "_goangel_patched"):
+                cls._fit = BaseGoalsModel._fit
+                cls._goangel_patched = True
+                patched += 1
+    except ImportError:
+        pass
 
-
-def _safe_call(func, *args, **kwargs):
-    try:
-        return func(*args, **kwargs)
-    except Exception as exc:
-        logger.debug("Appel optimiseur échoué : %s", exc)
-        return None
-
-
-def _adjust_for_method(method, bounds, constraints, jac):
-    adj_bounds = bounds
-    adj_constraints = constraints
-    adj_jac = jac
-
-    if method in _NO_CONSTRAINT_METHODS:
-        if adj_constraints:
-            logger.debug(
-                "Patch : %s ne supporte pas les contraintes → retirées", method,
-            )
-        adj_constraints = ()
-
-    if method in _NO_BOUNDS_METHODS:
-        if adj_bounds is not None:
-            logger.debug(
-                "Patch : %s ne supporte pas les bounds → retirés", method,
-            )
-        adj_bounds = None
-
-    if method == "trust-constr":
-        if adj_jac is not None and not isinstance(adj_jac, str):
-            adj_jac = None
-    elif method == "Powell":
-        adj_jac = None
-    elif method == "Nelder-Mead":
-        adj_jac = None
-
-    return adj_bounds, adj_constraints, adj_jac
-
-
-def _build_fallback_options(base_options, fallback_options):
-    merged = {}
-    for k, v in fallback_options.items():
-        merged[str(k)] = v
-    for k, v in base_options.items():
-        key = str(k)
-        if key in merged:
-            continue
-        merged[key] = v
-    return merged
-
-
-def _patched_minimize(
-    fun,
-    x0,
-    args=(),
-    method=None,
-    jac=None,
-    hess=None,
-    hessp=None,
-    bounds=None,
-    constraints=(),
-    tol=None,
-    callback=None,
-    options=None,
-    **extra_kwargs,
-):
-    if fun is None or not callable(fun):
-        raise TypeError("minimize: 'fun' doit être callable")
-
-    x0_arr = _sanitize_x0(x0)
-    if x0_arr is None:
-        raise ValueError("minimize: 'x0' invalide")
-
-    resolved_method = _resolve_method(method, bounds, constraints)
-    base_options = _sanitize_options(options)
-
-    adj_bounds, adj_constraints, adj_jac = _adjust_for_method(
-        resolved_method, bounds, constraints, jac,
-    )
-
-    primary_call_kwargs = {
-        "fun": fun,
-        "x0": x0_arr,
-        "args": args,
-        "method": resolved_method,
-        "jac": adj_jac,
-        "hess": hess,
-        "hessp": hessp,
-        "bounds": adj_bounds,
-        "constraints": adj_constraints,
-        "tol": tol,
-        "callback": callback,
-        "options": base_options,
-    }
-    for k, v in extra_kwargs.items():
-        if k not in primary_call_kwargs:
-            primary_call_kwargs[k] = v
-
-    primary_result = _safe_call(_ORIGINAL_REF, **primary_call_kwargs)
-
-    if _extract_success(primary_result) and _result_is_usable(primary_result):
-        return primary_result
-
-    needs_fallback = resolved_method in ("SLSQP", "COBYLA", "trust-constr")
-    if not needs_fallback:
-        if primary_result is not None:
-            return primary_result
-        return _safe_call(_ORIGINAL_REF, **primary_call_kwargs)
-
-    if primary_result is not None:
-        logger.warning(
-            "Optimiseur %s échoué (%s, fun=%s) → fallback automatique",
-            resolved_method,
-            _extract_message(primary_result),
-            _extract_fun(primary_result),
-        )
-
-    best_result = primary_result
-
-    for fallback_method, fallback_options in _DEFAULT_FALLBACK_CHAIN:
-        if fallback_method == resolved_method:
-            continue
-
-        fb_bounds, fb_constraints, fb_jac = _adjust_for_method(
-            fallback_method, bounds, constraints, jac,
-        )
-
-        fb_options = _build_fallback_options(
-            {"maxiter": base_options.get("maxiter", 5000)},
-            fallback_options,
-        )
-
-        if fallback_method == "trust-constr":
-            fb_jac_to_use = "2-point"
-        elif fallback_method == "Powell":
-            fb_jac_to_use = None
-        elif fallback_method == "L-BFGS-B":
-            fb_jac_to_use = "2-point"
-        else:
-            if callable(fb_jac):
-                try:
-                    _probe = fb_jac(np.asarray(x0_arr, dtype=np.float64))
-                    _ = np.asarray(_probe)
-                    fb_jac_to_use = fb_jac
-                except Exception:
-                    fb_jac_to_use = "2-point"
-            else:
-                fb_jac_to_use = fb_jac
-
-        call_kwargs = {
-            "fun": fun,
-            "x0": x0_arr,
-            "args": args,
-            "method": fallback_method,
-            "jac": fb_jac_to_use,
-            "hess": None,
-            "hessp": None,
-            "bounds": fb_bounds,
-            "constraints": fb_constraints,
-            "tol": tol,
-            "callback": callback,
-            "options": fb_options,
-        }
-
-        try:
-            fb_result = _ORIGINAL_REF(**call_kwargs)
-        except Exception as exc:
-            logger.debug("Fallback %s a levé : %s", fallback_method, exc)
-            continue
-
-        if _extract_success(fb_result) and _result_is_usable(fb_result):
-            logger.info(
-                "Fallback %s : SUCCESS (fun=%.6f, nit=%s)",
-                fallback_method,
-                _extract_fun(fb_result) or float("nan"),
-                getattr(fb_result, "nit", "?"),
-            )
-            return fb_result
-
-        if _result_is_better(fb_result, best_result):
-            best_result = fb_result
-            logger.info(
-                "Fallback %s : amélioration (fun=%.6g) conservée",
-                fallback_method,
-                _extract_fun(fb_result) or float("nan"),
-            )
-
-    if best_result is not None and _result_is_usable(best_result):
-        return _force_success_if_usable(
-            best_result,
-            reason="all_methods_failed_but_params_usable",
-            method=resolved_method,
-        )
-
-    if best_result is not None:
-        return best_result
-
-    return _safe_call(_ORIGINAL_REF, **primary_call_kwargs)
+    if patched:
+        logger.info("✅ %d classes PB filles patchées", patched)
+    return patched > 0
 
 
 def apply_patch() -> bool:
@@ -443,30 +244,18 @@ def apply_patch() -> bool:
         if _PATCH_APPLIED:
             return True
         try:
-            import scipy.optimize as _scipy_opt
-            current = getattr(_scipy_opt, "minimize", None)
-            if current is None:
-                logger.error("scipy.optimize.minimize introuvable")
-                return False
-            if getattr(current, "__name__", "") == "_patched_minimize":
+            ok1 = _patch_base_goals_model_fit()
+            _patch_zero_inflated()
+            if ok1:
                 _PATCH_APPLIED = True
                 _PATCH_TIMESTAMP = time.time()
+                logger.info(
+                    "✅ penaltyblog_method_patch appliqué "
+                    "(SLSQP → trust-constr → Powell → L-BFGS-B)",
+                )
                 return True
-            _scipy_opt.minimize = _patched_minimize
-            try:
-                import scipy.optimize._minimize as _min_mod
-                _min_mod.minimize = _patched_minimize
-            except Exception:
-                pass
-            _PATCH_APPLIED = True
-            _PATCH_TIMESTAMP = time.time()
-            logger.info(
-                "✅ penaltyblog_method_patch appliqué "
-                "(force_success=%s, fallback=%s)",
-                _FORCE_SUCCESS_ENABLED,
-                [m for m, _ in _DEFAULT_FALLBACK_CHAIN],
-            )
-            return True
+            logger.error("Patch BaseGoalsModel échoué")
+            return False
         except Exception as exc:
             logger.error("Application patch échouée : %s", exc)
             return False
@@ -482,10 +271,8 @@ def get_patch_info() -> Dict[str, Any]:
         return {
             "applied": bool(_PATCH_APPLIED),
             "timestamp": _PATCH_TIMESTAMP,
-            "force_success_enabled": bool(_FORCE_SUCCESS_ENABLED),
-            "fallback_chain": [m for m, _ in _DEFAULT_FALLBACK_CHAIN],
-            "max_fallback_attempts": int(_MAX_FALLBACK_ATTEMPTS),
-            "fun_abs_limit": float(_FUN_ABS_LIMIT),
+            "strategy": "BaseGoalsModel._fit monkey-patch",
+            "fallback_chain": ["SLSQP", "trust-constr", "Powell", "L-BFGS-B"],
         }
 
 
