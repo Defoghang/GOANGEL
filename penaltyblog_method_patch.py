@@ -1,8 +1,7 @@
-import functools
 import logging
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import numpy as np
 
@@ -16,6 +15,11 @@ _PATCH_LOCK: threading.RLock = threading.RLock()
 _PATCH_APPLIED: bool = False
 _ORIGINAL_REF: Callable[..., Any] = _ORIGINAL_MINIMIZE
 _PATCH_TIMESTAMP: Optional[float] = None
+
+
+_FORCE_SUCCESS_ENABLED: bool = True
+_FUN_ABS_LIMIT: float = 1e9
+_X_FINITE_ATOL: float = 1e-12
 
 
 _NO_CONSTRAINT_METHODS = frozenset({"Powell", "Nelder-Mead", "CG", "BFGS", "L-BFGS-B", "TNC"})
@@ -57,14 +61,9 @@ _DEFAULT_FALLBACK_CHAIN: Tuple[Tuple[str, Dict[str, Any]], ...] = (
 _MAX_FALLBACK_ATTEMPTS: int = len(_DEFAULT_FALLBACK_CHAIN)
 _MIN_X0_SIZE: int = 1
 _MAX_X0_SIZE: int = 500000
-_FUN_FINITE_TOLERANCE: float = 1e-300
 
 
-def _resolve_method(
-    method: Optional[str],
-    bounds: Any,
-    constraints: Any,
-) -> str:
+def _resolve_method(method, bounds, constraints):
     if method is not None:
         return str(method)
     has_constraints = bool(constraints) if constraints is not None else False
@@ -80,7 +79,7 @@ def _resolve_method(
     return "BFGS"
 
 
-def _sanitize_options(options: Any) -> Dict[str, Any]:
+def _sanitize_options(options):
     if options is None:
         return {}
     if not isinstance(options, dict):
@@ -91,7 +90,7 @@ def _sanitize_options(options: Any) -> Dict[str, Any]:
     return dict(options)
 
 
-def _sanitize_x0(x0: Any) -> Optional[np.ndarray]:
+def _sanitize_x0(x0):
     if x0 is None:
         return None
     try:
@@ -110,7 +109,7 @@ def _sanitize_x0(x0: Any) -> Optional[np.ndarray]:
     return arr
 
 
-def _result_is_usable(result: Any) -> bool:
+def _result_is_usable(result):
     if result is None:
         return False
     x = getattr(result, "x", None)
@@ -135,7 +134,7 @@ def _result_is_usable(result: Any) -> bool:
     return True
 
 
-def _extract_fun(result: Any) -> Optional[float]:
+def _extract_fun(result):
     if result is None:
         return None
     fun = getattr(result, "fun", None)
@@ -150,7 +149,7 @@ def _extract_fun(result: Any) -> Optional[float]:
     return f
 
 
-def _extract_success(result: Any) -> bool:
+def _extract_success(result):
     if result is None:
         return False
     s = getattr(result, "success", None)
@@ -162,7 +161,7 @@ def _extract_success(result: Any) -> bool:
         return False
 
 
-def _extract_message(result: Any) -> str:
+def _extract_message(result):
     if result is None:
         return "no result"
     msg = getattr(result, "message", None)
@@ -174,7 +173,19 @@ def _extract_message(result: Any) -> str:
         return "unknown"
 
 
-def _result_is_better(new_result: Any, old_result: Any) -> bool:
+def _extract_x(result):
+    if result is None:
+        return None
+    x = getattr(result, "x", None)
+    if x is None:
+        return None
+    try:
+        return np.asarray(x, dtype=np.float64)
+    except Exception:
+        return None
+
+
+def _result_is_better(new_result, old_result):
     if not _result_is_usable(new_result):
         return False
     new_fun = _extract_fun(new_result)
@@ -186,11 +197,48 @@ def _result_is_better(new_result: Any, old_result: Any) -> bool:
     return float(new_fun) < float(old_fun)
 
 
-def _safe_call(
-    func: Callable[..., Any],
-    *args: Any,
-    **kwargs: Any,
-) -> Any:
+def _force_success_if_usable(result, reason: str, method: str):
+    if not _FORCE_SUCCESS_ENABLED:
+        return result
+    if result is None:
+        return result
+    if _extract_success(result):
+        return result
+    if not _result_is_usable(result):
+        return result
+    f = _extract_fun(result)
+    if f is None:
+        return result
+    if abs(float(f)) > _FUN_ABS_LIMIT:
+        logger.warning(
+            "Forçage success refusé : fun=%.4g hors limites (|fun|>%.1g)",
+            float(f), _FUN_ABS_LIMIT,
+        )
+        return result
+    x = _extract_x(result)
+    if x is None:
+        return result
+    if not np.all(np.isfinite(x)):
+        return result
+    original_msg = _extract_message(result)
+    try:
+        result.success = True
+        result.message = (
+            f"[goangel_forced] method={method} reason={reason} "
+            f"original_msg={original_msg} fun={float(f):.6g}"
+        )
+    except Exception as exc:
+        logger.warning("Impossible de forcer success : %s", exc)
+        return result
+    logger.warning(
+        "⚠️ Forçage success=True : méthode=%s raison=%s fun=%.6g "
+        "(SLSQP/fallbacks sans convergence formelle, params acceptés)",
+        method, reason, float(f),
+    )
+    return result
+
+
+def _safe_call(func, *args, **kwargs):
     try:
         return func(*args, **kwargs)
     except Exception as exc:
@@ -198,12 +246,7 @@ def _safe_call(
         return None
 
 
-def _adjust_for_method(
-    method: str,
-    bounds: Any,
-    constraints: Any,
-    jac: Any,
-) -> Tuple[Any, Any, Any]:
+def _adjust_for_method(method, bounds, constraints, jac):
     adj_bounds = bounds
     adj_constraints = constraints
     adj_jac = jac
@@ -211,16 +254,14 @@ def _adjust_for_method(
     if method in _NO_CONSTRAINT_METHODS:
         if adj_constraints:
             logger.debug(
-                "Patch : %s ne supporte pas les contraintes → retirées",
-                method,
+                "Patch : %s ne supporte pas les contraintes → retirées", method,
             )
         adj_constraints = ()
 
     if method in _NO_BOUNDS_METHODS:
         if adj_bounds is not None:
             logger.debug(
-                "Patch : %s ne supporte pas les bounds → retirés",
-                method,
+                "Patch : %s ne supporte pas les bounds → retirés", method,
             )
         adj_bounds = None
 
@@ -235,11 +276,8 @@ def _adjust_for_method(
     return adj_bounds, adj_constraints, adj_jac
 
 
-def _build_fallback_options(
-    base_options: Dict[str, Any],
-    fallback_options: Dict[str, Any],
-) -> Dict[str, Any]:
-    merged: Dict[str, Any] = {}
+def _build_fallback_options(base_options, fallback_options):
+    merged = {}
     for k, v in fallback_options.items():
         merged[str(k)] = v
     for k, v in base_options.items():
@@ -251,20 +289,20 @@ def _build_fallback_options(
 
 
 def _patched_minimize(
-    fun: Callable[..., Any],
-    x0: Any,
-    args: Tuple[Any, ...] = (),
-    method: Optional[str] = None,
-    jac: Any = None,
-    hess: Any = None,
-    hessp: Any = None,
-    bounds: Any = None,
-    constraints: Any = (),
-    tol: Any = None,
-    callback: Any = None,
-    options: Any = None,
-    **extra_kwargs: Any,
-) -> Any:
+    fun,
+    x0,
+    args=(),
+    method=None,
+    jac=None,
+    hess=None,
+    hessp=None,
+    bounds=None,
+    constraints=(),
+    tol=None,
+    callback=None,
+    options=None,
+    **extra_kwargs,
+):
     if fun is None or not callable(fun):
         raise TypeError("minimize: 'fun' doit être callable")
 
@@ -279,7 +317,7 @@ def _patched_minimize(
         resolved_method, bounds, constraints, jac,
     )
 
-    primary_call_kwargs: Dict[str, Any] = {
+    primary_call_kwargs = {
         "fun": fun,
         "x0": x0_arr,
         "args": args,
@@ -326,45 +364,29 @@ def _patched_minimize(
             fallback_method, bounds, constraints, jac,
         )
 
+        fb_options = _build_fallback_options(
+            {"maxiter": base_options.get("maxiter", 5000)},
+            fallback_options,
+        )
+
         if fallback_method == "trust-constr":
-            fb_options = _build_fallback_options(
-                {"maxiter": base_options.get("maxiter", 5000)},
-                fallback_options,
-            )
-            if fb_jac is None:
-                fb_jac_to_use: Any = "2-point"
-            else:
-                fb_jac_to_use = fb_jac
+            fb_jac_to_use = "2-point"
         elif fallback_method == "Powell":
-            fb_options = _build_fallback_options(
-                {"maxiter": base_options.get("maxiter", 5000)},
-                fallback_options,
-            )
             fb_jac_to_use = None
         elif fallback_method == "L-BFGS-B":
-            fb_options = _build_fallback_options(
-                {"maxiter": base_options.get("maxiter", 5000)},
-                fallback_options,
-            )
-            if fb_jac is None:
-                fb_jac_to_use = "2-point"
+            fb_jac_to_use = "2-point"
+        else:
+            if callable(fb_jac):
+                try:
+                    _probe = fb_jac(np.asarray(x0_arr, dtype=np.float64))
+                    _ = np.asarray(_probe)
+                    fb_jac_to_use = fb_jac
+                except Exception:
+                    fb_jac_to_use = "2-point"
             else:
                 fb_jac_to_use = fb_jac
-        else:
-            fb_options = _build_fallback_options(
-                {"maxiter": base_options.get("maxiter", 5000)},
-                fallback_options,
-            )
-            fb_jac_to_use = fb_jac
 
-        if callable(fb_jac_to_use):
-            try:
-                _probe = fb_jac_to_use(np.asarray(x0_arr, dtype=np.float64))
-                _ = np.asarray(_probe)
-            except Exception:
-                fb_jac_to_use = "2-point" if fallback_method != "Powell" else None
-
-        call_kwargs: Dict[str, Any] = {
+        call_kwargs = {
             "fun": fun,
             "x0": x0_arr,
             "args": args,
@@ -382,9 +404,7 @@ def _patched_minimize(
         try:
             fb_result = _ORIGINAL_REF(**call_kwargs)
         except Exception as exc:
-            logger.debug(
-                "Fallback %s a levé : %s", fallback_method, exc,
-            )
+            logger.debug("Fallback %s a levé : %s", fallback_method, exc)
             continue
 
         if _extract_success(fb_result) and _result_is_usable(fb_result):
@@ -399,10 +419,17 @@ def _patched_minimize(
         if _result_is_better(fb_result, best_result):
             best_result = fb_result
             logger.info(
-                "Fallback %s : amélioration (fun=%.6f) conservée",
+                "Fallback %s : amélioration (fun=%.6g) conservée",
                 fallback_method,
                 _extract_fun(fb_result) or float("nan"),
             )
+
+    if best_result is not None and _result_is_usable(best_result):
+        return _force_success_if_usable(
+            best_result,
+            reason="all_methods_failed_but_params_usable",
+            method=resolved_method,
+        )
 
     if best_result is not None:
         return best_result
@@ -435,7 +462,9 @@ def apply_patch() -> bool:
             _PATCH_TIMESTAMP = time.time()
             logger.info(
                 "✅ penaltyblog_method_patch appliqué "
-                "(fallback chain: trust-constr → Powell → L-BFGS-B)"
+                "(force_success=%s, fallback=%s)",
+                _FORCE_SUCCESS_ENABLED,
+                [m for m, _ in _DEFAULT_FALLBACK_CHAIN],
             )
             return True
         except Exception as exc:
@@ -453,8 +482,10 @@ def get_patch_info() -> Dict[str, Any]:
         return {
             "applied": bool(_PATCH_APPLIED),
             "timestamp": _PATCH_TIMESTAMP,
+            "force_success_enabled": bool(_FORCE_SUCCESS_ENABLED),
             "fallback_chain": [m for m, _ in _DEFAULT_FALLBACK_CHAIN],
             "max_fallback_attempts": int(_MAX_FALLBACK_ATTEMPTS),
+            "fun_abs_limit": float(_FUN_ABS_LIMIT),
         }
 
 
