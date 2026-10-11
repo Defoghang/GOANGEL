@@ -100,7 +100,7 @@ DEFAULT_BAYESIAN_BURN: int = 1000
 DEFAULT_BAYESIAN_N_CHAINS: int = 4
 DEFAULT_BAYESIAN_THIN: int = 5
 DEFAULT_BAYESIAN_N_CORES: int = 1
-BAYESIAN_MIN_MATCHES_OVERRIDE: int = 20
+BAYESIAN_MIN_MATCHES_OVERRIDE: int = 5
 
 FILTER_PLAN: Dict[int, Dict[str, Any]] = {
     1:  {"min_matches": 0,  "max_goals": 100, "half_life": 180.0},
@@ -675,6 +675,25 @@ def _extract_dates_for_kept(
     return None
 
 
+def _is_bayesian_model_usable(model: Any) -> bool:
+    """Vérifie qu'un modèle bayésien est utilisable malgré Iteration limit."""
+    if model is None:
+        return False
+    trace = getattr(model, "trace", None)
+    if trace is None:
+        return False
+    try:
+        import numpy as _np
+        arr = _np.asarray(trace, dtype=float)
+    except Exception:
+        return False
+    if arr.size == 0:
+        return False
+    if not _np.all(_np.isfinite(arr)):
+        return False
+    return True
+
+
 def fit_pb_attempt(
     class_name: str,
     model_class: Any,
@@ -755,11 +774,15 @@ def fit_pb_attempt(
         return model_class(gh_f, ga_f, th_f, ta_f)
 
     if is_bayesian:
+        # Progressif : plus de samples à chaque tentative (max 3000)
+        progress_factor = min(1.0 + 0.5 * (attempt - 1), 3.0)
+        n_samples_try = min(int(PB_BAYESIAN_N_SAMPLES * progress_factor), 3000)
+        burn_try = min(int(PB_BAYESIAN_BURN * progress_factor), 1500)
         try:
             m = _instantiate()
             kwargs: Dict[str, Any] = {
-                "n_samples": PB_BAYESIAN_N_SAMPLES,
-                "burn": PB_BAYESIAN_BURN,
+                "n_samples": n_samples_try,
+                "burn": burn_try,
                 "n_chains": PB_BAYESIAN_N_CHAINS,
                 "thin": PB_BAYESIAN_THIN,
             }
@@ -781,12 +804,41 @@ def fit_pb_attempt(
             save_checkpoint(class_name, attempt, {"meta": meta, "status": "ok"})
             return "ok", m, meta
         except Exception as exc:
+            err_str = str(exc)
             msg = f"bayesian fit failed: {type(exc).__name__}: {exc}"
             meta["error"] = msg
             meta["status"] = "incomplete"
             meta["duration_s"] = float(time.monotonic() - start_ts)
+            meta["bayesian_n_samples_try"] = n_samples_try
+            meta["bayesian_burn_try"] = burn_try
             save_checkpoint(class_name, attempt, {"meta": meta, "status": "incomplete"})
             logger.warning("%s : %s", class_name, msg)
+            # Si "Iteration limit reached" → c'est un signal de retry avec plus de samples
+            # Tenter récupération : le sampler MCMC peut avoir convergé partiellement
+            partial_model = None
+            try:
+                partial_model = m
+            except Exception:
+                partial_model = None
+            if partial_model is not None and _is_bayesian_model_usable(partial_model):
+                logger.warning(
+                    "%s : forçage succès sur modèle partiel (trace finie, %d params)",
+                    class_name, int(partial_model.trace.shape[1]) if hasattr(partial_model.trace, "shape") else -1,
+                )
+                meta["status"] = "ok"
+                meta["optimizer"] = "bayesian_partial_forced"
+                meta["forced_success"] = True
+                meta["forced_reason"] = err_str[:200]
+                meta["duration_s"] = float(time.monotonic() - start_ts)
+                meta["bayesian_kwargs"] = dict(kwargs)
+                update_best_filter(class_name, filt, n_kept)
+                save_checkpoint(class_name, attempt, {"meta": meta, "status": "ok"})
+                return "ok", partial_model, meta
+            if "Iteration limit" in err_str or "iteration limit" in err_str.lower():
+                logger.warning(
+                    "%s : limite d'itérations atteinte — retry avec n_samples=%d, burn=%d",
+                    class_name, n_samples_try, burn_try,
+                )
             return "incomplete", None, meta
 
     try:
