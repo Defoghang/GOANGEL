@@ -184,6 +184,40 @@ def _atomic_write_pickle(path: Path, obj: Any) -> None:
         raise
 
 
+def _atomic_read_pickle(path: Path) -> Any:
+    """Lit un pickle en auto-détectant xz/gzip/brut. Rétrocompatible avec
+    les fichiers écrits par _atomic_write_pickle (xz si > seuil)."""
+    if not path.exists():
+        raise FileNotFoundError(f"Fichier pickle introuvable : {path}")
+
+    with open(path, "rb") as f:
+        magic = f.read(6)
+
+    if magic[:6] == b"\xfd7zXZ\x00":
+        import lzma
+        with open(path, "rb") as f:
+            data = f.read()
+        try:
+            raw = lzma.decompress(data)
+        except Exception as exc:
+            raise ValueError(f"xz corrompu pour {path} : {exc}") from exc
+        return pickle.loads(raw)
+
+    if magic[:2] == b"\x1f\x8b":
+        import gzip
+        with open(path, "rb") as f:
+            data = f.read()
+        try:
+            raw = gzip.decompress(data)
+        except Exception as exc:
+            raise ValueError(f"gzip corrompu pour {path} : {exc}") from exc
+        return pickle.loads(raw)
+
+    with open(path, "rb") as f:
+        return pickle.load(f)
+
+
+
 def _safe_str(value: Any, default: str = "") -> str:
     if value is None:
         return default
@@ -522,14 +556,10 @@ def load_or_build_data_and_models(
 
     if cache_available:
         try:
-            with open(HISTORICAL_FILE, "rb") as f:
-                df_past = pickle.load(f)
-            with open(MODELS_FILE, "rb") as f:
-                ml_models, pb_models = pickle.load(f)
-            with open(SCALER_FILE, "rb") as f:
-                pipeline = pickle.load(f)
-            with open(WEIGHTS_FILE, "rb") as f:
-                weights = pickle.load(f)
+            df_past = _atomic_read_pickle(HISTORICAL_FILE)
+            ml_models, pb_models = _atomic_read_pickle(MODELS_FILE)
+            pipeline = _atomic_read_pickle(SCALER_FILE)
+            weights = _atomic_read_pickle(WEIGHTS_FILE)
             if _validate_cached_payload(df_past, ml_models, pb_models, pipeline, weights):
                 n_ml = len(ml_models) if isinstance(ml_models, dict) else 0
                 n_pb = len(pb_models) if isinstance(pb_models, list) else 0

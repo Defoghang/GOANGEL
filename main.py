@@ -114,6 +114,7 @@ from features import (
 from predict import (
     _load_full_history,
     _atomic_write_pickle,
+    _atomic_read_pickle,
 )
 
 try:
@@ -838,9 +839,7 @@ def _stage_save_features(df_past: pd.DataFrame) -> None:
 def _stage_load_features() -> Dict[str, Any]:
     if not _FEATURES_FILE.exists():
         raise RuntimeError(f"Stage prepare manquant : {_FEATURES_FILE}")
-    import pickle
-    with open(_FEATURES_FILE, "rb") as f:
-        return pickle.load(f)
+    return _atomic_read_pickle(_FEATURES_FILE)
 
 
 def _stage_train_ml_model(model_name: str) -> None:
@@ -1044,8 +1043,7 @@ def _stage_finalize() -> None:
         if not model_path.exists():
             stage_print(f"⚠️ {model_name} absent, ignoré")
             continue
-        with open(model_path, "rb") as f:
-            payload_m = pickle.load(f)
+        payload_m = _atomic_read_pickle(model_path)
         base = payload_m["model"]
         if model_name == "DL":
             calibrated, st = _calibrate_or_keep(model_name, base, X_calib_scaled, y_calib)
@@ -1090,8 +1088,7 @@ def _stage_finalize() -> None:
         model_path = MODELS_DIR / f"pb_{class_name}.pkl"
         if not model_path.exists():
             continue
-        with open(model_path, "rb") as f:
-            payload_pb = pickle.load(f)
+        payload_pb = _atomic_read_pickle(model_path)
         model = payload_pb["model"]
         probas: List[List[float]] = []
         y_kept: List[int] = []
@@ -1178,6 +1175,16 @@ def _stage_finalize() -> None:
     hist_path = Path(CACHE_DIR) / "historical.pkl"
     if not hist_path.exists():
         _atomic_write_pickle(hist_path, pd.DataFrame())
+    try:
+        from pb_convergence import _strip_mcmc_trace
+        for _mn, _mm in (ml_models or {}).items():
+            _strip_mcmc_trace(_mm)
+        for _cn, _mm in (pb_models or []):
+            _strip_mcmc_trace(_mm)
+        logger.info("Strip trace appliqué avant models.pkl")
+    except Exception as _strip_exc:
+        logger.warning("Strip trace models.pkl : %s", _strip_exc)
+
     _atomic_write_pickle(Path(CACHE_DIR) / "models.pkl", (ml_models, pb_models))
     _atomic_write_pickle(Path(CACHE_DIR) / "scaler.pkl", pipeline)
     _atomic_write_pickle(Path(CACHE_DIR) / "weights.pkl", weights)
