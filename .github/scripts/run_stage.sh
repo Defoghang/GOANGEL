@@ -19,6 +19,13 @@ echo "  Run ID        : ${GITHUB_RUN_ID}"
 echo "  Attempt       : ${GITHUB_RUN_ATTEMPT}"
 echo "═══════════════════════════════════════════════════════════"
 
+# Git LFS (préinstallé sur ubuntu-latest)
+if ! command -v git-lfs &>/dev/null; then
+  echo "Installation git-lfs..."
+  sudo apt-get update -qq && sudo apt-get install -y -qq git-lfs
+fi
+git lfs install --skip-repo
+
 pip install --upgrade pip -q
 pip install -q requests python-dotenv numpy pandas scipy scikit-learn
 pip install -q xgboost lightgbm catboost penaltyblog
@@ -117,6 +124,20 @@ cd gopush
 git config user.email "actions@users.noreply.github.com"
 git config user.name "GOANGEL Auto"
 git checkout -B cache-auto
+
+# ── Git LFS : tracker les gros fichiers AVANT git add ──
+git lfs install --local --skip-repo
+git lfs track "*.pkl"
+git lfs track "*.pkl.xz"
+git lfs track "*.h5"
+git lfs track "*.pt"
+git lfs track "*.pth"
+git add .gitattributes
+
+# Configurer LFS pour ce repo (upload direct via HTTPS)
+git config lfs.https://github.com/${GITHUB_REPOSITORY}.git/info/lfs.access basic
+git config lfs.concurrenttransfers 4
+
 mkdir -p cache
 if [ -d "${GITHUB_WORKSPACE}/cache" ]; then
   cp -r "${GITHUB_WORKSPACE}/cache/." cache/ 2>/dev/null || true
