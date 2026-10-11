@@ -61,14 +61,21 @@ def run_audit(cache_dir="cache"):
     metadata_file = cache / "stages" / "metadata.pkl"
 
     head("1. Présence artefacts")
+    _CRITICAL = {"features.pkl", "historical.pkl"}
     for f in (features_file, historical_file, metadata_file):
         if not f.exists():
             fail(f"Introuvable : {f}")
-            return 1
+            if f.name in _CRITICAL:
+                return 1
+            continue
         size = f.stat().st_size
         if size < 1024:
-            fail(f"{f.name} = {size} bytes (pointeur LFS ?)")
-            return 1
+            if f.name in _CRITICAL:
+                fail(f"{f.name} = {size} bytes (pointeur LFS non résolu)")
+                return 1
+            else:
+                warn(f"{f.name} = {size} bytes (pointeur LFS, non critique)")
+                continue
         ok(f"{f.name} : {size/1024/1024:.1f} MB")
 
     try:

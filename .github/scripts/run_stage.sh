@@ -64,6 +64,16 @@ if gh api "repos/${GITHUB_REPOSITORY}/branches/cache-auto" >/dev/null 2>&1; then
   git clone --depth 1 --branch cache-auto \
     "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
     /tmp/ckpt_restore 2>/dev/null
+
+  # ← Résoudre les pointeurs LFS en vrais blobs
+  if [ -d /tmp/ckpt_restore ]; then
+    cd /tmp/ckpt_restore
+    if ! git lfs pull 2>&1 | tail -3; then
+      echo "⚠️  git lfs pull échoué (continuera avec les fichiers disponibles)"
+    fi
+    cd "${GITHUB_WORKSPACE}"
+  fi
+
   if [ -d /tmp/ckpt_restore/cache ]; then
     cp -r /tmp/ckpt_restore/cache/. cache/ 2>/dev/null || true
   fi
