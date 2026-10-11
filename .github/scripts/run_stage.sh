@@ -55,6 +55,25 @@ fi
 
 if [ -f "cache/stages/done/${STAGE}.done" ]; then
   echo "✅ Stage ${STAGE} déjà terminé (marqueur .done présent) — skip"
+  if [ "${IS_RETRY}" = "true" ]; then
+    NEXT=$(python3 main.py --stage next 2>/dev/null | grep '^NEXT:' | cut -d: -f2 | tr -d '[:space:]')
+    echo "🔗 Stage suivant détecté (skip chain) : ${NEXT}"
+    if [ -n "${NEXT}" ] && [ "${NEXT}" != "DONE" ]; then
+      sleep 12
+      gh workflow run train.yml --repo "${GITHUB_REPOSITORY}" \
+        -f seasons_lookback=${SEASONS} \
+        -f enrich_xg=${ENRICH} \
+        -f workers_per_key=${WORKERS_PER_KEY} \
+        -f max_workers=${MAX_WORKERS} \
+        -f rate_limit_per_minute=${RATE_LIMIT} \
+        -f max_attempts_per_model=${MAX_ATTEMPTS} \
+        -f force_stage=${NEXT} \
+        -f is_retry=true
+      echo "🚀 Nouveau run déclenché pour ${NEXT}"
+    else
+      echo "🏁 Tous les stages sont done — DONE"
+    fi
+  fi
   exit 0
 fi
 
