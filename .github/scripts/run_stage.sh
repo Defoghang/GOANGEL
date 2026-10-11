@@ -69,6 +69,16 @@ if gh api "repos/${GITHUB_REPOSITORY}/branches/cache-auto" >/dev/null 2>&1; then
   fi
 fi
 
+# ─── Audit pipeline (fuites & sauts de matchs) ───
+if [ -f "audit_pipeline.py" ] && [ -f "cache/stages/features.pkl" ]; then
+  echo ""
+  echo "═══════════════════════════════════════════════════════════"
+  echo "  AUDIT PIPELINE (fuites & sauts)"
+  echo "═══════════════════════════════════════════════════════════"
+  python3 -u audit_pipeline.py 2>&1 | tee -a audit.log || true
+  echo ""
+fi
+
 if [ -f "cache/stages/done/${STAGE}.done" ]; then
   echo "✅ Stage ${STAGE} déjà terminé (marqueur .done présent) — skip"
   if [ "${IS_RETRY}" = "true" ]; then
