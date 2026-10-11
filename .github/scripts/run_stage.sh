@@ -201,7 +201,7 @@ if [ "${RC}" = "0" ]; then
     TRIGGERED=0
     for trigger_attempt in 1 2 3; do
       echo "  Trigger ${trigger_attempt}/3 pour ${NEXT}..."
-      if gh workflow run train.yml --repo "${GITHUB_REPOSITORY}" \
+      TRIGGER_OUTPUT=$(gh workflow run train.yml --repo "${GITHUB_REPOSITORY}" \
         -f seasons_lookback=${SEASONS} \
         -f enrich_xg=${ENRICH} \
         -f workers_per_key=${WORKERS_PER_KEY} \
@@ -209,10 +209,15 @@ if [ "${RC}" = "0" ]; then
         -f rate_limit_per_minute=${RATE_LIMIT} \
         -f max_attempts_per_model=${MAX_ATTEMPTS} \
         -f force_stage=${NEXT} \
-        -f is_retry=true 2>&1; then
+        -f is_retry=true 2>&1)
+      TRIGGER_RC=$?
+      echo "  gh workflow run output : ${TRIGGER_OUTPUT}"
+      if [ "${TRIGGER_RC}" = "0" ]; then
+        echo "  ✅ Trigger réussi (RC=0)"
         TRIGGERED=1
         break
       fi
+      echo "  ⚠️  Trigger RC=${TRIGGER_RC} — retry dans 10s..."
       echo "  ⚠️  Trigger échoué, retry dans 10s..."
       sleep 10
     done

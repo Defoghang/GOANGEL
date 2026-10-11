@@ -323,7 +323,8 @@ jobs:
     needs: finalize
     if: |
       always() && !cancelled() &&
-      (needs.finalize.result == 'success' || needs.finalize.result == 'skipped')
+      inputs.force_stage == '' &&
+      needs.finalize.result == 'success'
     uses: ./.github/workflows/release.yml
     with:
       version: ""
