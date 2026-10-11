@@ -704,37 +704,29 @@ _BAYESIAN_INIT_PATCHED: bool = False
 
 
 def _safe_get_initial_params(self) -> np.ndarray:
-    """Remplace _get_initial_params() : tente le MLE, sinon retourne un
-    vecteur centré utilisable par les walkers MCMC."""
-    ndim = (self.n_teams * 2) + 2
-    try:
-        from penaltyblog.models.base_model import BaseGoalsModel as _BGM
-        orig = _BGM._get_initial_params
-    except Exception:
-        orig = None
-
-    if orig is not None:
-        try:
-            params = orig(self)
-            arr = np.asarray(params, dtype=np.float64).ravel()
-            if arr.size == ndim and np.all(np.isfinite(arr)):
-                return arr
-            logger.warning(
-                "MLE initial renvoyé invalide (%s), fallback aléatoire centré",
-                arr.shape if hasattr(arr, 'shape') else "?",
-            )
-        except Exception as exc:
-            logger.warning(
-                "MLE initial a échoué (%s) — fallback aléatoire centré", exc,
-            )
-
+    """Remplace _get_initial_params : évite le MLE PoissonGoalsModel qui
+    échoue sur les datasets volumineux. Retourne directement un vecteur
+    aléatoire centré de taille n_teams*2 + 1 (att + def + hfa).
+    Le fit() ajoutera automatiquement rho (-0.1) par concatenate."""
+    ndim = (self.n_teams * 2) + 1
     rng = np.random.default_rng(12345)
     att = rng.normal(0.0, 0.15, size=self.n_teams)
     deff = rng.normal(0.0, 0.15, size=self.n_teams)
     att -= att.mean()
     deff -= deff.mean()
-    hfa_rho = np.array([0.25, -0.10], dtype=np.float64)
-    return np.concatenate([att, deff, hfa_rho])
+    hfa = np.array([0.25], dtype=np.float64)
+    result = np.concatenate([att, deff, hfa])
+    if result.size != ndim:
+        logger.error(
+            "_safe_get_initial_params : shape %d != %d (attendu %d)",
+            result.size, ndim, ndim,
+        )
+    logger.info(
+        "✅ _safe_get_initial_params : vecteur aléatoire centré %d params "
+        "(n_teams=%d, évite le MLE PoissonGoalsModel)",
+        result.size, self.n_teams,
+    )
+    return result
 
 
 def apply_bayesian_init_patch() -> bool:

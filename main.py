@@ -132,6 +132,14 @@ from api import (
 
 from pb_convergence import PBIncompleteError
 
+# Forcer l'application du patch bayesian au chargement du module
+try:
+    from pb_convergence import apply_bayesian_init_patch as _ensure_bayesian_patch
+    _ensure_bayesian_patch()
+except Exception as _exc:
+    import logging as _l
+    _l.getLogger("goangel.main").warning("Patch bayesian init échoué : %s", _exc)
+
 logger = logging.getLogger("goangel.main")
 
 try:
