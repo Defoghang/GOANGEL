@@ -38,6 +38,7 @@ __all__ = [
     "DEFAULT_BAYESIAN_N_CHAINS",
     "DEFAULT_BAYESIAN_THIN",
     "DEFAULT_BAYESIAN_N_CORES",
+    "BAYESIAN_MIN_MATCHES_OVERRIDE",
     "PB_MAX_ATTEMPTS",
     "PB_MAX_GOALS_FILTER",
     "PB_HALF_LIFE_DEFAULT",
@@ -99,6 +100,7 @@ DEFAULT_BAYESIAN_BURN: int = 1000
 DEFAULT_BAYESIAN_N_CHAINS: int = 4
 DEFAULT_BAYESIAN_THIN: int = 5
 DEFAULT_BAYESIAN_N_CORES: int = 1
+BAYESIAN_MIN_MATCHES_OVERRIDE: int = 20
 
 FILTER_PLAN: Dict[int, Dict[str, Any]] = {
     1:  {"min_matches": 0,  "max_goals": 100, "half_life": 180.0},
@@ -698,6 +700,11 @@ def fit_pb_attempt(
             "half_life": best.get("half_life", PB_HALF_LIFE_DEFAULT),
         }
     filt = resolve_filter(attempt, best_spec)
+    if is_bayesian:
+        filt["min_matches"] = max(
+            int(filt["min_matches"]),
+            int(BAYESIAN_MIN_MATCHES_OVERRIDE),
+        )
     mm = int(filt["min_matches"])
     mg = int(filt["max_goals"])
     hl = float(filt["half_life"])
