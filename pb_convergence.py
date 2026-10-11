@@ -766,6 +766,138 @@ def apply_bayesian_init_patch() -> bool:
 
 apply_bayesian_init_patch()
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Patch penaltyblog : plafonner n_walkers pour éviter l'OOM (16 GB RAM)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_BAYESIAN_WALKERS_PATCHED: bool = False
+_BAYESIAN_MAX_WALKERS: int = 500
+
+
+def _patched_generate_start_positions(
+    self,
+    n_walkers: int,
+    mle_params=None,
+) -> np.ndarray:
+    """Cap n_walkers pour éviter l'OOM sur les gros datasets."""
+    if n_walkers > _BAYESIAN_MAX_WALKERS:
+        logger.warning(
+            "🎯 _generate_start_positions : n_walkers %d → %d (cap mémoire)",
+            n_walkers, _BAYESIAN_MAX_WALKERS,
+        )
+        n_walkers = _BAYESIAN_MAX_WALKERS
+        if n_walkers % 2 != 0:
+            n_walkers += 1
+
+    ndim = (self.n_teams * 2) + 2
+    start_pos = np.zeros((n_walkers, ndim))
+
+    if mle_params is not None:
+        if len(mle_params) != ndim:
+            raise ValueError(
+                f"MLE params shape {len(mle_params)} != Model ndim {ndim}"
+            )
+        att_mle = mle_params[: self.n_teams]
+        def_mle = mle_params[self.n_teams : 2 * self.n_teams]
+        hfa_rho = mle_params[2 * self.n_teams :]
+        att_centered = att_mle - np.mean(att_mle)
+        def_centered = def_mle - np.mean(def_mle)
+        centered_params = np.concatenate(
+            [att_centered, def_centered, hfa_rho]
+        )
+        for w in range(n_walkers):
+            start_pos[w, :] = centered_params + np.random.normal(0, 0.05, ndim)
+    else:
+        start_pos = np.random.normal(0, 0.1, size=(n_walkers, ndim))
+        start_pos[:, -2] = np.random.normal(0.25, 0.1, size=n_walkers)
+        start_pos[:, -1] = np.random.normal(0.0, 0.1, size=n_walkers)
+
+    mem_gb = (n_walkers * ndim * 8) / (1024 ** 3)
+    logger.info(
+        "🎯 _generate_start_positions : n_walkers=%d, ndim=%d, "
+        "mémoire (1 step) ≈ %.3f GB",
+        n_walkers, ndim, mem_gb,
+    )
+    return start_pos
+
+
+def _patched_generate_hierarchical_starts(
+    self,
+    n_walkers: int,
+    mle_params: np.ndarray,
+) -> np.ndarray:
+    """Cap n_walkers pour le modèle hiérarchique."""
+    if n_walkers > _BAYESIAN_MAX_WALKERS:
+        logger.warning(
+            "🎯 _generate_hierarchical_starts : n_walkers %d → %d (cap mémoire)",
+            n_walkers, _BAYESIAN_MAX_WALKERS,
+        )
+        n_walkers = _BAYESIAN_MAX_WALKERS
+        if n_walkers % 2 != 0:
+            n_walkers += 1
+
+    ndim = (self.n_teams * 2) + 4
+    start_pos = np.zeros((n_walkers, ndim))
+    att_mle = mle_params[: self.n_teams]
+    def_mle = mle_params[self.n_teams : 2 * self.n_teams]
+    hfa_rho = mle_params[2 * self.n_teams :]
+    att_centered = att_mle - np.mean(att_mle)
+    def_centered = def_mle - np.mean(def_mle)
+    sig_att_est = np.std(att_centered)
+    sig_def_est = np.std(def_centered)
+    base_params = np.concatenate(
+        [att_centered, def_centered, hfa_rho, [sig_att_est, sig_def_est]]
+    )
+    for w in range(n_walkers):
+        start_pos[w, :] = base_params + np.random.normal(0, 0.05, ndim)
+
+    mem_gb = (n_walkers * ndim * 8) / (1024 ** 3)
+    logger.info(
+        "🎯 _generate_hierarchical_starts : n_walkers=%d, ndim=%d, "
+        "mémoire (1 step) ≈ %.3f GB",
+        n_walkers, ndim, mem_gb,
+    )
+    return start_pos
+
+
+def apply_bayesian_walkers_patch() -> bool:
+    """Monkey-patch _generate_start_positions + _generate_hierarchical_starts
+    pour plafonner n_walkers (évite l'OOM 40.5 GiB)."""
+    global _BAYESIAN_WALKERS_PATCHED
+    if _BAYESIAN_WALKERS_PATCHED:
+        return True
+    try:
+        from penaltyblog.models.bayesian_goal_model import (
+            BayesianGoalModel,
+        )
+        BayesianGoalModel._generate_start_positions = (
+            _patched_generate_start_positions
+        )
+        try:
+            from penaltyblog.models.hierarchical_bayesian_goal_model import (
+                HierarchicalBayesianGoalModel,
+            )
+            HierarchicalBayesianGoalModel._generate_hierarchical_starts = (
+                _patched_generate_hierarchical_starts
+            )
+        except ImportError:
+            pass
+        _BAYESIAN_WALKERS_PATCHED = True
+        logger.info(
+            "✅ Walkers patchés : cap n_walkers=%d (évite OOM)",
+            _BAYESIAN_MAX_WALKERS,
+        )
+        return True
+    except Exception as exc:
+        logger.error("Patch walkers échoué : %s", exc)
+        return False
+
+
+apply_bayesian_walkers_patch()
+
+
 def fit_pb_attempt(
     class_name: str,
     model_class: Any,
