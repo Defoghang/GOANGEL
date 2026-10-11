@@ -100,7 +100,7 @@ DEFAULT_BAYESIAN_BURN: int = 1000
 DEFAULT_BAYESIAN_N_CHAINS: int = 4
 DEFAULT_BAYESIAN_THIN: int = 5
 DEFAULT_BAYESIAN_N_CORES: int = 1
-BAYESIAN_MIN_MATCHES_OVERRIDE: int = 5
+BAYESIAN_MIN_MATCHES_OVERRIDE: int = 0
 
 FILTER_PLAN: Dict[int, Dict[str, Any]] = {
     1:  {"min_matches": 0,  "max_goals": 100, "half_life": 180.0},
@@ -694,6 +694,86 @@ def _is_bayesian_model_usable(model: Any) -> bool:
     return True
 
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Patch penaltyblog : neutraliser _get_initial_params() sur BayesianGoalModel
+# ─────────────────────────────────────────────────────────────────────────────
+
+_BAYESIAN_INIT_PATCHED: bool = False
+
+
+def _safe_get_initial_params(self) -> np.ndarray:
+    """Remplace _get_initial_params() : tente le MLE, sinon retourne un
+    vecteur centré utilisable par les walkers MCMC."""
+    ndim = (self.n_teams * 2) + 2
+    try:
+        from penaltyblog.models.base_model import BaseGoalsModel as _BGM
+        orig = _BGM._get_initial_params
+    except Exception:
+        orig = None
+
+    if orig is not None:
+        try:
+            params = orig(self)
+            arr = np.asarray(params, dtype=np.float64).ravel()
+            if arr.size == ndim and np.all(np.isfinite(arr)):
+                return arr
+            logger.warning(
+                "MLE initial renvoyé invalide (%s), fallback aléatoire centré",
+                arr.shape if hasattr(arr, 'shape') else "?",
+            )
+        except Exception as exc:
+            logger.warning(
+                "MLE initial a échoué (%s) — fallback aléatoire centré", exc,
+            )
+
+    rng = np.random.default_rng(12345)
+    att = rng.normal(0.0, 0.15, size=self.n_teams)
+    deff = rng.normal(0.0, 0.15, size=self.n_teams)
+    att -= att.mean()
+    deff -= deff.mean()
+    hfa_rho = np.array([0.25, -0.10], dtype=np.float64)
+    return np.concatenate([att, deff, hfa_rho])
+
+
+def apply_bayesian_init_patch() -> bool:
+    """Monkey-patch _get_initial_params sur les modèles bayésiens."""
+    global _BAYESIAN_INIT_PATCHED
+    if _BAYESIAN_INIT_PATCHED:
+        return True
+    try:
+        from penaltyblog.models.base_bayesian_model import BaseBayesianModel
+        from penaltyblog.models.bayesian_goal_model import BayesianGoalModel
+        try:
+            from penaltyblog.models.hierarchical_bayesian_goal_model import (
+                HierarchicalBayesianGoalModel,
+            )
+        except ImportError:
+            HierarchicalBayesianGoalModel = None
+
+        patched = 0
+        for cls in (BaseBayesianModel, BayesianGoalModel, HierarchicalBayesianGoalModel):
+            if cls is None:
+                continue
+            try:
+                cls._get_initial_params = _safe_get_initial_params
+                patched += 1
+            except Exception as exc:
+                logger.warning("Patch %s échoué : %s", cls.__name__, exc)
+        _BAYESIAN_INIT_PATCHED = True
+        logger.info(
+            "✅ _get_initial_params patché sur %d classe(s) bayésienne(s)",
+            patched,
+        )
+        return True
+    except Exception as exc:
+        logger.error("Patch initial_params échoué : %s", exc)
+        return False
+
+
+apply_bayesian_init_patch()
+
 def fit_pb_attempt(
     class_name: str,
     model_class: Any,
@@ -719,7 +799,7 @@ def fit_pb_attempt(
             "half_life": best.get("half_life", PB_HALF_LIFE_DEFAULT),
         }
     filt = resolve_filter(attempt, best_spec)
-    if is_bayesian:
+    if is_bayesian and BAYESIAN_MIN_MATCHES_OVERRIDE > 0:
         filt["min_matches"] = max(
             int(filt["min_matches"]),
             int(BAYESIAN_MIN_MATCHES_OVERRIDE),
