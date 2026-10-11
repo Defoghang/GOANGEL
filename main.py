@@ -910,6 +910,22 @@ def _stage_train_ml_model(model_name: str) -> None:
                     break
         if best_state is not None:
             model.load_state_dict(best_state)
+
+        # ── Évaluation LogLoss sur le set de calibration ──
+        try:
+            from sklearn.metrics import log_loss as _ll
+            from features import _TorchProbaWrapper as _TPW
+            _wrapper = _TPW(model)
+            _proba = _wrapper.predict_proba(X_calib_scaled)
+            _ll_val = float(_ll(y_calib, _proba, labels=[0, 1, 2]))
+            _acc = float((_proba.argmax(axis=1) == y_calib).mean())
+            stage_print(
+                f"✅ DL : LogLoss={_ll_val:.4f} | "
+                f"Accuracy={_acc * 100:.1f}% (calib n={len(y_calib)})"
+            )
+        except Exception as _exc:
+            stage_print(f"⚠️ DL : LogLoss indisponible ({_exc})")
+
         _atomic_write_pickle(model_path, {"model": model, "type": "DL", "imputer": imputer, "scaler": scaler})
         stage_print(f"💾 {model_name} sauvegardé : {model_path}")
         return
@@ -928,8 +944,24 @@ def _stage_train_ml_model(model_name: str) -> None:
     m = factory()
     if model_name in _TREE_MODELS_NAN_NATIVE:
         m.fit(X_train_raw, y_train)
+        X_calib_input = X_calib_raw
     else:
         m.fit(X_train_scaled, y_train)
+        X_calib_input = X_calib_scaled
+
+    # ── Évaluation LogLoss sur le set de calibration ──
+    try:
+        from sklearn.metrics import log_loss as _ll
+        _proba = m.predict_proba(X_calib_input)
+        _ll_val = float(_ll(y_calib, _proba, labels=[0, 1, 2]))
+        _acc = float((_proba.argmax(axis=1) == y_calib).mean())
+        stage_print(
+            f"✅ {model_name} : LogLoss={_ll_val:.4f} | "
+            f"Accuracy={_acc * 100:.1f}% (calib n={len(y_calib)})"
+        )
+    except Exception as _exc:
+        stage_print(f"⚠️ {model_name} : LogLoss indisponible ({_exc})")
+
     _atomic_write_pickle(model_path, {"model": m, "type": model_name, "imputer": imputer, "scaler": scaler})
     stage_print(f"💾 {model_name} sauvegardé : {model_path}")
 

@@ -317,3 +317,14 @@ jobs:
       max_attempts_per_model: ${{ inputs.max_attempts_per_model }}
       is_retry: ${{ inputs.is_retry }}
     secrets: inherit
+
+  release:
+    name: "16 - Release"
+    needs: finalize
+    if: |
+      always() && !cancelled() &&
+      (needs.finalize.result == 'success' || needs.finalize.result == 'skipped')
+    uses: ./.github/workflows/release.yml
+    with:
+      version: ""
+    secrets: inherit

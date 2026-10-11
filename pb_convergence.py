@@ -773,7 +773,7 @@ apply_bayesian_init_patch()
 # ─────────────────────────────────────────────────────────────────────────────
 
 _BAYESIAN_WALKERS_PATCHED: bool = False
-_BAYESIAN_MAX_WALKERS: int = 300
+_BAYESIAN_MAX_WALKERS: int = 400
 
 
 def _patched_generate_start_positions(
@@ -922,37 +922,79 @@ _TRACE_ATTRS_TO_STRIP: Tuple[str, ...] = (
 )
 
 
-def _strip_mcmc_trace(model: Any) -> List[str]:
-    """Retire les gros attributs de trace MCMC (inutiles pour predict()).
-    Retourne la liste des attributs effectivement supprimés."""
-    removed: List[str] = []
-    for attr in _TRACE_ATTRS_TO_STRIP:
+def _compact_mcmc_trace(model: Any) -> List[str]:
+    """Compacte self.trace en preservant sa moyenne exacte.
+
+    penaltyblog utilise self.trace.mean(axis=(0,1)) dans predict() pour
+    calculer les parametres finaux. Supprimer la trace casse predict().
+    Cette fonction remplace la trace (n_samples, n_walkers, ndim) par sa
+    moyenne posterieure reshaped en (1, 1, ndim). Le .mean() de predict()
+    sur cette trace compactee donne exactement le meme resultat."""
+    actions: List[str] = []
+    if model is None:
+        return actions
+
+    _TRACE_ATTRS = ("trace", "traces", "_trace")
+    _JUNK_ATTRS = ("sampler_state", "mcmc_samples", "log_prob", "log_probs")
+
+    for attr in _TRACE_ATTRS:
         if not hasattr(model, attr):
             continue
         try:
             val = getattr(model, attr)
             if val is None:
                 continue
-            size_b = 0
-            try:
-                import numpy as _np
-                arr = _np.asarray(val)
-                size_b = int(arr.nbytes)
-            except Exception:
-                size_b = 0
-            if size_b > 1_000_000:
-                try:
-                    delattr(model, attr)
-                    removed.append(attr)
-                    logger.info(
-                        "🎯 Strip trace : attribut '%s' retiré (%.1f MB)",
-                        attr, size_b / (1024 * 1024),
-                    )
-                except Exception:
-                    pass
+            arr = np.asarray(val, dtype=np.float64)
+        except Exception:
+            continue
+        if arr.size == 0:
+            continue
+
+        orig_shape = arr.shape
+        orig_mb = arr.nbytes / (1024.0 * 1024.0)
+
+        mean_val = arr.mean(axis=tuple(range(arr.ndim - 1))) if arr.ndim >= 2 else arr.copy()
+
+        if arr.ndim == 3:
+            compact = mean_val.reshape(1, 1, -1).astype(np.float64)
+        elif arr.ndim == 2:
+            compact = mean_val.reshape(1, -1).astype(np.float64)
+        else:
+            compact = mean_val.reshape(1).astype(np.float64)
+
+        new_mb = compact.nbytes / (1024.0 * 1024.0)
+
+        try:
+            setattr(model, attr, compact)
+            setattr(model, f"_goangel_{attr}_mean", mean_val.copy())
+            actions.append(f"compacted:{attr}")
+            logger.info(
+                "🗜️ Compact %s : %s -> %s (%.1f MB -> %.4f MB)",
+                attr, orig_shape, compact.shape, orig_mb, new_mb,
+            )
+        except Exception as exc:
+            logger.warning("Compact %s echoue : %s", attr, exc)
+
+    for attr in _JUNK_ATTRS:
+        if not hasattr(model, attr):
+            continue
+        try:
+            val = getattr(model, attr)
+            if val is None:
+                continue
+            nbytes = int(np.asarray(val).nbytes)
+            if nbytes > 1_000_000:
+                delattr(model, attr)
+                actions.append(f"deleted:{attr}")
+                logger.info(
+                    "🗑️ Supprime %s (%.1f MB)", attr, nbytes / (1024 * 1024),
+                )
         except Exception:
             pass
-    return removed
+
+    return actions
+
+
 
 
 def _pickle_xz_payload(path: Path, payload: Any) -> None:
@@ -1097,8 +1139,52 @@ def fit_pb_attempt(
             except (TypeError, ValueError):
                 pass
             m.fit(**kwargs)
-            stripped = _strip_mcmc_trace(m)
+            stripped = _compact_mcmc_trace(m)
             meta["stripped_attrs"] = stripped
+            # Verification OBLIGATOIRE : predict() doit marcher apres compact
+            _home_test = th_f[0] if th_f else None
+            _away_test = ta_f[0] if ta_f else None
+            _predict_ok = False
+            if _home_test and _away_test:
+                try:
+                    from features import (
+                        _extract_model_probabilities as _emp,
+                    )
+                    _grid = m.predict(_home_test, _away_test)
+                    _mk = _emp(_grid)
+                    _hda = _mk.get("home_draw_away")
+                    if _hda is not None and len(_hda) == 3:
+                        _predict_ok = True
+                        meta["predict_check"] = "ok"
+                        logger.info(
+                            "✅ Post-compact predict OK : %.4f/%.4f/%.4f",
+                            _hda[0], _hda[1], _hda[2],
+                        )
+                except Exception as _pexc:
+                    logger.error("❌ predict() casse apres compact : %s", _pexc)
+                    meta["predict_check"] = f"FAILED:{_pexc}"
+                    # Restaurer mean dans self.trace
+                    for _ta in ("trace", "traces", "_trace"):
+                        _ma = f"_goangel_{_ta}_mean"
+                        if hasattr(m, _ma):
+                            _mv = np.asarray(getattr(m, _ma))
+                            if _mv.ndim == 1:
+                                _mv = _mv.reshape(1, 1, -1)
+                            setattr(m, _ta, _mv)
+                            logger.warning("🔧 Restaure %s", _ta)
+
+            if not _predict_ok:
+                msg = "predict() KO apres compact — modele non utilisable"
+                meta["error"] = msg
+                meta["status"] = "incomplete"
+                meta["duration_s"] = float(time.monotonic() - start_ts)
+                save_checkpoint(
+                    class_name, attempt,
+                    {"meta": meta, "status": "incomplete"},
+                )
+                logger.error("%s : %s", class_name, msg)
+                return "incomplete", None, meta
+
             meta["status"] = "ok"
             meta["optimizer"] = "bayesian"
             meta["duration_s"] = float(time.monotonic() - start_ts)

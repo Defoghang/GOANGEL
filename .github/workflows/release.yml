@@ -1,0 +1,98 @@
+name: GOANGEL Release
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore cache-auto
+        run: |
+          git clone --depth 1 --branch cache-auto \
+            "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" \
+            /tmp/cache-auto 2>/dev/null || true
+
+      - name: Build artifacts ZIP
+        run: |
+          mkdir -p /tmp/release-artifacts
+          cd /tmp/cache-auto
+          if [ -d cache ]; then
+            cp -r cache /tmp/release-artifacts/
+          fi
+          cd /tmp/release-artifacts
+          cat > MANIFEST.txt <<EOF
+          GOANGEL PREDICTION ENGINE — RELEASE ARTIFACTS
+          =================================================
+          Date de build : $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          Commit        : ${{ github.sha }}
+          Run ID        : ${{ github.run_id }}
+          Branche source: cache-auto
+          
+          CONTENU :
+          - cache/models.pkl       → Modèles ML + PB entraînés
+          - cache/scaler.pkl       → Pipeline prétraitement (imputer + scaler)
+          - cache/weights.pkl      → Poids d'ensemble + température calibration
+          - cache/historical.pkl   → Historique des matchs traités
+          - cache/stages/          → Checkpoints intermédiaires
+          
+          UTILISATION :
+            1. Téléchargez goangel-cache.zip
+            2. Décompressez dans votre dossier GOANGEL
+            3. Lancez : python3 main.py --date "07/12/2026"
+          
+          CONSERVATION : Illimitée (release GitHub, pas d'expiration)
+          EOF
+          zip -r -9 goangel-cache.zip . -x "*.pyc" "*.tmp"
+          ls -lh goangel-cache.zip
+
+      - name: Detect version
+        id: ver
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "tag=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            TAG="v$(date -u +%Y.%m.%d-%H%M)"
+            echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.ver.outputs.tag }}"
+          TITLE="GOANGEL Model Cache ${TAG}"
+          NOTES="Cache complet entraîné le $(date -u +'%Y-%m-%d %H:%M UTC').
+
+          ## Contenu
+          - 5 modèles ML (XGB, LGBM, CatBoost, RF, DL)
+          - 8 modèles Penaltyblog (Poisson, DixonColes, Bivariate, NegBin, ZeroInfl, Weibull, Bayesian, Hierarchical)
+          - Pipeline prétraitement + poids ensemble calibrés
+          
+          ## Utilisation
+          1. Téléchargez \`goangel-cache.zip\`
+          2. Décompressez dans votre dossier GOANGEL
+          3. \`python3 main.py --date \"07/12/2026\"\`
+
+          ## Conservation
+          Ce fichier reste disponible **définitivement** (release GitHub, pas d'expiration)."
+
+          gh release create "$TAG" \
+            --title "$TITLE" \
+            --notes "$NOTES" \
+            /tmp/release-artifacts/goangel-cache.zip \
+          || gh release upload "$TAG" \
+            /tmp/release-artifacts/goangel-cache.zip --clobber
+
+          echo "✅ Release $TAG publiée"
+          echo "🔗 https://github.com/${{ github.repository }}/releases/tag/$TAG"
