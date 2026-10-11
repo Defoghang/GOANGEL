@@ -773,7 +773,7 @@ apply_bayesian_init_patch()
 # ─────────────────────────────────────────────────────────────────────────────
 
 _BAYESIAN_WALKERS_PATCHED: bool = False
-_BAYESIAN_MAX_WALKERS: int = 150
+_BAYESIAN_MAX_WALKERS: int = 300
 
 
 def _patched_generate_start_positions(
@@ -898,6 +898,103 @@ def apply_bayesian_walkers_patch() -> bool:
 apply_bayesian_walkers_patch()
 
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers : strip trace MCMC + pickle compressé xz
+# ─────────────────────────────────────────────────────────────────────────────
+
+_XZ_COMPRESS_THRESHOLD_MB: float = 10.0
+
+_TRACE_ATTRS_TO_STRIP: Tuple[str, ...] = (
+    "trace",
+    "traces",
+    "samples",
+    "chain",
+    "chains",
+    "log_prob",
+    "log_probs",
+    "posterior_samples",
+    "sampler_state",
+    "mcmc_samples",
+    "_trace",
+    "_samples",
+)
+
+
+def _strip_mcmc_trace(model: Any) -> List[str]:
+    """Retire les gros attributs de trace MCMC (inutiles pour predict()).
+    Retourne la liste des attributs effectivement supprimés."""
+    removed: List[str] = []
+    for attr in _TRACE_ATTRS_TO_STRIP:
+        if not hasattr(model, attr):
+            continue
+        try:
+            val = getattr(model, attr)
+            if val is None:
+                continue
+            size_b = 0
+            try:
+                import numpy as _np
+                arr = _np.asarray(val)
+                size_b = int(arr.nbytes)
+            except Exception:
+                size_b = 0
+            if size_b > 1_000_000:
+                try:
+                    delattr(model, attr)
+                    removed.append(attr)
+                    logger.info(
+                        "🎯 Strip trace : attribut '%s' retiré (%.1f MB)",
+                        attr, size_b / (1024 * 1024),
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    return removed
+
+
+def _pickle_xz_payload(path: Path, payload: Any) -> None:
+    """Écrit un pickle compressé xz si > seuil, sinon pickle standard."""
+    import lzma
+    raw = pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL)
+    raw_mb = len(raw) / (1024 * 1024)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+
+    if raw_mb < _XZ_COMPRESS_THRESHOLD_MB:
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        with open(tmp, "wb") as f:
+            f.write(raw)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except OSError:
+                pass
+        os.replace(tmp, path)
+        logger.info("💾 Pickle raw %.2f MB → %s", raw_mb, path.name)
+        return
+
+    compressed = lzma.compress(raw, preset=6)
+    comp_mb = len(compressed) / (1024 * 1024)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "wb") as f:
+        f.write(compressed)
+        f.flush()
+        try:
+            os.fsync(f.fileno())
+        except OSError:
+            pass
+    os.replace(tmp, path)
+    logger.info(
+        "💾 Pickle xz %.2f MB → %.2f MB (ratio %.1fx)",
+        raw_mb, comp_mb, raw_mb / max(comp_mb, 0.001),
+    )
+
+
 def fit_pb_attempt(
     class_name: str,
     model_class: Any,
@@ -1000,6 +1097,8 @@ def fit_pb_attempt(
             except (TypeError, ValueError):
                 pass
             m.fit(**kwargs)
+            stripped = _strip_mcmc_trace(m)
+            meta["stripped_attrs"] = stripped
             meta["status"] = "ok"
             meta["optimizer"] = "bayesian"
             meta["duration_s"] = float(time.monotonic() - start_ts)

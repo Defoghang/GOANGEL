@@ -7,6 +7,10 @@ if [ -z "${STAGE}" ]; then
 fi
 
 export GH_TOKEN="${GITHUB_TOKEN}"
+export OMP_NUM_THREADS=2
+export OPENBLAS_NUM_THREADS=2
+export MKL_NUM_THREADS=2
+export NUMEXPR_NUM_THREADS=2
 
 echo "═══════════════════════════════════════════════════════════"
 echo "  GOANGEL STAGE : ${STAGE}"

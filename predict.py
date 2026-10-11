@@ -141,21 +141,39 @@ def _cache_is_fresh(path: Path) -> bool:
     return age_hours < CACHE_TTL_HOURS
 
 
+_XZ_PICKLE_THRESHOLD_MB: float = 10.0
+
+
 def _atomic_write_pickle(path: Path, obj: Any) -> None:
-    if not CACHE_ATOMIC_WRITE:
-        with open(path, "wb") as f:
-            pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
-        return
+    import lzma
+    raw = pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL)
+    raw_mb = len(raw) / (1024 * 1024)
     tmp_path = path.with_suffix(path.suffix + ".tmp")
     try:
-        with open(tmp_path, "wb") as f:
-            pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
-            f.flush()
-            try:
-                os.fsync(f.fileno())
-            except OSError:
-                pass
-        os.replace(tmp_path, path)
+        if raw_mb >= _XZ_PICKLE_THRESHOLD_MB:
+            compressed = lzma.compress(raw, preset=6)
+            comp_mb = len(compressed) / (1024 * 1024)
+            with open(tmp_path, "wb") as f:
+                f.write(compressed)
+                f.flush()
+                try:
+                    os.fsync(f.fileno())
+                except OSError:
+                    pass
+            os.replace(tmp_path, path)
+            logger.info(
+                "💾 %s : xz %.1f MB → %.1f MB (ratio %.1fx)",
+                path.name, raw_mb, comp_mb, raw_mb / max(comp_mb, 0.001),
+            )
+        else:
+            with open(tmp_path, "wb") as f:
+                f.write(raw)
+                f.flush()
+                try:
+                    os.fsync(f.fileno())
+                except OSError:
+                    pass
+            os.replace(tmp_path, path)
     except Exception as exc:
         logger.error("Échec écriture atomique %s : %s", path, exc)
         try:
