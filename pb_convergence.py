@@ -773,7 +773,7 @@ apply_bayesian_init_patch()
 # ─────────────────────────────────────────────────────────────────────────────
 
 _BAYESIAN_WALKERS_PATCHED: bool = False
-_BAYESIAN_MAX_WALKERS: int = 400
+_BAYESIAN_MAX_WALKERS: int = 300
 
 
 def _patched_generate_start_positions(
@@ -923,21 +923,42 @@ _TRACE_ATTRS_TO_STRIP: Tuple[str, ...] = (
 
 
 def _compact_mcmc_trace(model: Any) -> List[str]:
-    """Compacte self.trace en preservant sa moyenne exacte.
+    """Compacte TOUS les gros arrays du modele bayesien pour eviter l'OOM.
 
-    penaltyblog utilise self.trace.mean(axis=(0,1)) dans predict() pour
-    calculer les parametres finaux. Supprimer la trace casse predict().
-    Cette fonction remplace la trace (n_samples, n_walkers, ndim) par sa
-    moyenne posterieure reshaped en (1, 1, ndim). Le .mean() de predict()
-    sur cette trace compactee donne exactement le meme resultat."""
+    - Compacte self.trace / self.traces / self._trace en preservant .mean()
+    - Deep-scan : tout ndarray > 10 MB est compacte (moyenne) ou supprime
+    - Scan des objets imbriques (ex: self.sampler.*) pour les gros arrays
+    - Force gc.collect() + malloc_trim() apres compactage
+    """
+    import gc
     actions: List[str] = []
     if model is None:
         return actions
 
-    _TRACE_ATTRS = ("trace", "traces", "_trace")
-    _JUNK_ATTRS = ("sampler_state", "mcmc_samples", "log_prob", "log_probs")
+    _THRESHOLD_BYTES = 10 * 1024 * 1024
+    _KEEP_ATTRS = {"_params", "params", "coef_", "intercept_", "classes_"}
 
-    for attr in _TRACE_ATTRS:
+    def _compact_array(arr, attr_name):
+        if arr.size == 0:
+            return None
+        orig_mb = arr.nbytes / (1024.0 * 1024.0)
+        mean_axes = tuple(range(arr.ndim - 1)) if arr.ndim >= 2 else None
+        mean_val = arr.mean(axis=mean_axes) if mean_axes else arr.copy()
+        if arr.ndim == 3:
+            compact = mean_val.reshape(1, 1, -1).astype(np.float64)
+        elif arr.ndim == 2:
+            compact = mean_val.reshape(1, -1).astype(np.float64)
+        else:
+            compact = mean_val.reshape(1).astype(np.float64)
+        logger.info(
+            "🗜️ Compact %s : %s -> %s (%.1f MB -> %.4f MB)",
+            attr_name, arr.shape, compact.shape, orig_mb,
+            compact.nbytes / (1024.0 * 1024.0),
+        )
+        return compact
+
+    # 1. Traces connues
+    for attr in ("trace", "traces", "_trace"):
         if not hasattr(model, attr):
             continue
         try:
@@ -945,37 +966,89 @@ def _compact_mcmc_trace(model: Any) -> List[str]:
             if val is None:
                 continue
             arr = np.asarray(val, dtype=np.float64)
-        except Exception:
-            continue
-        if arr.size == 0:
-            continue
-
-        orig_shape = arr.shape
-        orig_mb = arr.nbytes / (1024.0 * 1024.0)
-
-        mean_val = arr.mean(axis=tuple(range(arr.ndim - 1))) if arr.ndim >= 2 else arr.copy()
-
-        if arr.ndim == 3:
-            compact = mean_val.reshape(1, 1, -1).astype(np.float64)
-        elif arr.ndim == 2:
-            compact = mean_val.reshape(1, -1).astype(np.float64)
-        else:
-            compact = mean_val.reshape(1).astype(np.float64)
-
-        new_mb = compact.nbytes / (1024.0 * 1024.0)
-
-        try:
+            if arr.size == 0:
+                continue
+            mean_val = arr.mean(axis=tuple(range(arr.ndim - 1))) if arr.ndim >= 2 else arr.copy()
+            compact = _compact_array(arr, attr)
+            if compact is None:
+                continue
             setattr(model, attr, compact)
             setattr(model, f"_goangel_{attr}_mean", mean_val.copy())
             actions.append(f"compacted:{attr}")
-            logger.info(
-                "🗜️ Compact %s : %s -> %s (%.1f MB -> %.4f MB)",
-                attr, orig_shape, compact.shape, orig_mb, new_mb,
-            )
         except Exception as exc:
-            logger.warning("Compact %s echoue : %s", attr, exc)
+            logger.debug("Compact %s echoue : %s", attr, exc)
 
-    for attr in _JUNK_ATTRS:
+    # 2. Deep-scan des attributs directs
+    try:
+        attr_names = list(vars(model).keys())
+    except Exception:
+        attr_names = []
+
+    for attr_name in attr_names:
+        if attr_name in _KEEP_ATTRS:
+            continue
+        if attr_name.startswith("_goangel_"):
+            continue
+        if attr_name in ("trace", "traces", "_trace"):
+            continue
+        try:
+            val = getattr(model, attr_name)
+        except Exception:
+            continue
+
+        if isinstance(val, np.ndarray):
+            if val.nbytes < _THRESHOLD_BYTES:
+                continue
+            try:
+                if val.ndim >= 2:
+                    compact = _compact_array(val, attr_name)
+                    if compact is not None:
+                        setattr(model, attr_name, compact)
+                        actions.append(f"deep_compacted:{attr_name}")
+                else:
+                    delattr(model, attr_name)
+                    actions.append(f"deep_deleted:{attr_name}")
+            except Exception:
+                pass
+            continue
+
+        if hasattr(val, "__dict__"):
+            try:
+                sub_attrs = list(vars(val).keys())
+            except Exception:
+                continue
+            for sub_name in sub_attrs:
+                try:
+                    sub_val = getattr(val, sub_name)
+                except Exception:
+                    continue
+                if not isinstance(sub_val, np.ndarray):
+                    continue
+                if sub_val.nbytes < _THRESHOLD_BYTES:
+                    continue
+                try:
+                    if sub_val.ndim >= 2:
+                        compact = _compact_array(
+                            sub_val, f"{attr_name}.{sub_name}",
+                        )
+                        if compact is not None:
+                            setattr(val, sub_name, compact)
+                            actions.append(
+                                f"nested_compacted:{attr_name}.{sub_name}"
+                            )
+                    else:
+                        try:
+                            delattr(val, sub_name)
+                            actions.append(
+                                f"nested_deleted:{attr_name}.{sub_name}"
+                            )
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+    # 3. Junk attributes
+    for attr in ("sampler_state", "mcmc_samples", "log_prob", "log_probs"):
         if not hasattr(model, attr):
             continue
         try:
@@ -986,14 +1059,18 @@ def _compact_mcmc_trace(model: Any) -> List[str]:
             if nbytes > 1_000_000:
                 delattr(model, attr)
                 actions.append(f"deleted:{attr}")
-                logger.info(
-                    "🗑️ Supprime %s (%.1f MB)", attr, nbytes / (1024 * 1024),
-                )
         except Exception:
             pass
 
-    return actions
+    # 4. GC force
+    gc.collect()
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
 
+    return actions
 
 
 
@@ -1118,9 +1195,9 @@ def fit_pb_attempt(
 
     if is_bayesian:
         # Progressif : plus de samples à chaque tentative (max 3000)
-        progress_factor = min(1.0 + 0.5 * (attempt - 1), 3.0)
-        n_samples_try = min(int(PB_BAYESIAN_N_SAMPLES * progress_factor), 3000)
-        burn_try = min(int(PB_BAYESIAN_BURN * progress_factor), 1500)
+        progress_factor = 1.0  # fixe pour éviter OOM sur retries
+        n_samples_try = min(int(PB_BAYESIAN_N_SAMPLES * progress_factor), 750)
+        burn_try = min(int(PB_BAYESIAN_BURN * progress_factor), 400)
         try:
             m = _instantiate()
             kwargs: Dict[str, Any] = {
