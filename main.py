@@ -1229,9 +1229,16 @@ def _stage_finalize() -> None:
 
 
 def _stage_refresh() -> None:
-    """Met à jour l'historique avec les nouveaux matchs FINISHED.
-    Appelle update_historical.py en subprocess. Retourne RC!=0 si erreur."""
-    stage_print("🔄 STAGE REFRESH — Update historique incrémental")
+    """Met à jour l'historique + régénère les features.
+
+    Étapes :
+    1. update_historical.py → récupère nouveaux matchs FINISHED (fetch API)
+    2. create_features_with_context → régénère les 172 features pour
+       TOUS les matchs (anciens + nouveaux) → features.pkl à jour
+    """
+    stage_print("🔄 STAGE REFRESH — Update historique + features")
+
+    # ── 1. Fetch incrémental des nouveaux matchs ──
     try:
         import subprocess
         import sys as _sys
@@ -1244,12 +1251,95 @@ def _stage_refresh() -> None:
             raise RuntimeError(
                 f"update_historical.py a échoué (RC={result.returncode})"
             )
-        stage_print("✅ STAGE REFRESH — Historique mis à jour")
+        stage_print("✅ Historique mis à jour")
     except FileNotFoundError:
-        stage_print("⚠️  update_historical.py introuvable — refresh ignoré")
+        stage_print("⚠️  update_historical.py introuvable — fetch ignoré")
     except Exception as exc:
-        logger.error("Refresh échoué : %s", exc)
+        logger.error("Fetch refresh échoué : %s", exc)
         raise
+
+    # ── 2. Régénération des features ──
+    stage_print("🔧 Régénération des features (tracker sur TOUS les matchs)...")
+
+    try:
+        import pickle as _pickle
+        from features import (
+            create_features_with_context,
+            EXPECTED_FEATURE_COUNT,
+        )
+
+        hist_path = Path(CACHE_DIR) / "historical.pkl"
+        if not hist_path.exists():
+            raise RuntimeError(f"historical.pkl introuvable : {hist_path}")
+
+        # Charger historical.pkl (gère xz + pickle brut)
+        try:
+            from predict import _atomic_read_pickle as _arp
+            df_past = _arp(hist_path)
+        except Exception:
+            with open(hist_path, "rb") as f:
+                df_past = _pickle.load(f)
+
+        if df_past is None or df_past.empty:
+            raise RuntimeError("historical.pkl vide après refresh")
+
+        stage_print(f"   historical.pkl : {len(df_past)} matchs")
+
+        # Régénérer les features
+        t0 = _time.time()
+        X, y, home_keys, away_keys, gh_all, ga_all, comps, h2h = (
+            create_features_with_context(df_past, strict_competition=True)
+        )
+        duration = _time.time() - t0
+
+        if X.shape[0] < MIN_MATCHES_FOR_TRAINING:
+            raise RuntimeError(
+                f"Features insuffisantes : {X.shape[0]} < {MIN_MATCHES_FOR_TRAINING}"
+            )
+        if X.shape[1] != EXPECTED_FEATURE_COUNT:
+            raise RuntimeError(
+                f"Features shape invalide : {X.shape[1]} != {EXPECTED_FEATURE_COUNT}"
+            )
+
+        # Sauvegarder features.pkl (atomique)
+        payload = {
+            "X": X,
+            "y": y,
+            "home_keys": home_keys,
+            "away_keys": away_keys,
+            "gh_all": gh_all,
+            "ga_all": ga_all,
+            "comps": comps,
+            "h2h": h2h,
+            "n": len(X),
+            "created_at": _datetime.now().isoformat(),
+        }
+        _atomic_write_pickle(_FEATURES_FILE, payload)
+
+        # Métadonnées
+        meta = {
+            "n_matchs": len(df_past),
+            "n_features": X.shape[1],
+            "n_samples": len(X),
+            "class_counts": np.bincount(y, minlength=3).tolist(),
+            "created_at": _datetime.now().isoformat(),
+            "refreshed": True,
+        }
+        _atomic_write_pickle(_METADATA_FILE, meta)
+
+        stage_print(
+            f"✅ Features régénérées : {len(X)} samples × {X.shape[1]} features "
+            f"en {duration:.1f}s"
+        )
+        stage_print(f"   Classes : {meta['class_counts']}")
+        stage_print("✅ STAGE REFRESH — Historique + features à jour")
+    except Exception as exc:
+        logger.error("Régénération features échouée : %s", exc)
+        raise
+
+
+import time as _time
+from datetime import datetime as _datetime
 
 def _stage_prepare() -> None:
     stage_print("🚀 STAGE PREPARE")
