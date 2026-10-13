@@ -52,12 +52,31 @@ jobs:
       is_retry: ${{ inputs.is_retry }}
     secrets: inherit
 
-  train_xgb:
-    name: "02 - XGBoost"
+  refresh_data:
+    name: "01b - Refresh Data"
     needs: prepare
     if: |
       always() && !cancelled() &&
       (needs.prepare.result == 'success' || needs.prepare.result == 'skipped') &&
+      (inputs.force_stage == '' || inputs.force_stage == 'refresh')
+    uses: ./.github/workflows/_stage_runner.yml
+    with:
+      stage: refresh
+      seasons_lookback: ${{ inputs.seasons_lookback }}
+      enrich_xg: ${{ inputs.enrich_xg }}
+      workers_per_key: ${{ inputs.workers_per_key }}
+      max_workers: ${{ inputs.max_workers }}
+      rate_limit_per_minute: ${{ inputs.rate_limit_per_minute }}
+      max_attempts_per_model: ${{ inputs.max_attempts_per_model }}
+      is_retry: ${{ inputs.is_retry }}
+    secrets: inherit
+
+  train_xgb:
+    name: "02 - XGBoost"
+    needs: refresh_data
+    if: |
+      always() && !cancelled() &&
+      (needs.refresh_data.result == 'success' || needs.refresh_data.result == 'skipped') &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_xgb')
     uses: ./.github/workflows/_stage_runner.yml
     with:

@@ -663,6 +663,8 @@ def _increment_attempts(stage: str) -> int:
 def _stage_artifacts(stage: str) -> List[Path]:
     if stage == "prepare":
         return [_FEATURES_FILE, _METADATA_FILE, Path(CACHE_DIR) / "historical.pkl"]
+    if stage == "refresh":
+        return [Path(CACHE_DIR) / "historical.pkl"]
     if stage in _ML_STAGE_KEYS:
         return [MODELS_DIR / f"ml_{_ML_STAGE_KEYS[stage]}.pkl"]
     if stage in _PB_STAGE_KEYS:
@@ -1224,6 +1226,31 @@ def _stage_finalize() -> None:
     stage_print(f"   ML : {len(ml_models)} | PB : {len(pb_models)} | Poids : {len(weights)}")
 
 
+
+
+def _stage_refresh() -> None:
+    """Met à jour l'historique avec les nouveaux matchs FINISHED.
+    Appelle update_historical.py en subprocess. Retourne RC!=0 si erreur."""
+    stage_print("🔄 STAGE REFRESH — Update historique incrémental")
+    try:
+        import subprocess
+        import sys as _sys
+        result = subprocess.run(
+            [_sys.executable, "update_historical.py"],
+            capture_output=False,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"update_historical.py a échoué (RC={result.returncode})"
+            )
+        stage_print("✅ STAGE REFRESH — Historique mis à jour")
+    except FileNotFoundError:
+        stage_print("⚠️  update_historical.py introuvable — refresh ignoré")
+    except Exception as exc:
+        logger.error("Refresh échoué : %s", exc)
+        raise
+
 def _stage_prepare() -> None:
     stage_print("🚀 STAGE PREPARE")
     try:
@@ -1279,6 +1306,8 @@ def _stage_run(stage_name: str) -> int:
     try:
         if stage_name == "prepare":
             _stage_prepare()
+        elif stage_name == "refresh":
+            _stage_refresh()
         elif stage_name in _ML_STAGE_KEYS:
             _stage_train_ml_model(_ML_STAGE_KEYS[stage_name])
         elif stage_name in _PB_STAGE_KEYS:
