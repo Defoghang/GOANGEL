@@ -274,6 +274,7 @@ _ML_STAGE_KEYS: Dict[str, str] = {
 
 _STAGES_ORDER: Tuple[str, ...] = (
     "prepare",
+    "refresh",
     "train_xgb",
     "train_lgbm",
     "train_catboost",

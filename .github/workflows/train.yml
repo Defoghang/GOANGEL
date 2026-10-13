@@ -57,7 +57,8 @@ jobs:
     needs: prepare
     if: |
       always() && !cancelled() &&
-      (needs.prepare.result == 'success' || needs.prepare.result == 'skipped') &&
+      needs.prepare.result != 'failure' &&
+      needs.prepare.result != 'cancelled' &&
       (inputs.force_stage == '' || inputs.force_stage == 'refresh')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -76,7 +77,8 @@ jobs:
     needs: refresh_data
     if: |
       always() && !cancelled() &&
-      (needs.refresh_data.result == 'success' || needs.refresh_data.result == 'skipped') &&
+      needs.refresh_data.result != 'failure' &&
+      needs.refresh_data.result != 'cancelled' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_xgb')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -95,7 +97,8 @@ jobs:
     needs: train_xgb
     if: |
       always() && !cancelled() &&
-      (needs.train_xgb.result == 'success' || needs.train_xgb.result == 'skipped') &&
+      needs.train_xgb.result != 'failure' &&
+      needs.train_xgb.result != 'cancelled' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_lgbm')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -114,7 +117,8 @@ jobs:
     needs: train_lgbm
     if: |
       always() && !cancelled() &&
-      (needs.train_lgbm.result == 'success' || needs.train_lgbm.result == 'skipped') &&
+      needs.train_lgbm.result != 'failure' &&
+      needs.train_lgbm.result != 'cancelled' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_catboost')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -133,7 +137,8 @@ jobs:
     needs: train_catboost
     if: |
       always() && !cancelled() &&
-      (needs.train_catboost.result == 'success' || needs.train_catboost.result == 'skipped') &&
+      needs.train_catboost.result != 'failure' &&
+      needs.train_catboost.result != 'cancelled' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_rf')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -152,7 +157,8 @@ jobs:
     needs: train_rf
     if: |
       always() && !cancelled() &&
-      (needs.train_rf.result == 'success' || needs.train_rf.result == 'skipped') &&
+      needs.train_rf.result != 'failure' &&
+      needs.train_rf.result != 'cancelled' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_dl')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -171,7 +177,8 @@ jobs:
     needs: train_dl
     if: |
       always() && !cancelled() &&
-      (needs.train_dl.result == 'success' || needs.train_dl.result == 'skipped') &&
+      needs.train_dl.result != 'failure' &&
+      needs.train_dl.result != 'cancelled' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_pb_poisson')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -190,7 +197,8 @@ jobs:
     needs: train_pb_poisson
     if: |
       always() && !cancelled() &&
-      (needs.train_pb_poisson.result == 'success' || needs.train_pb_poisson.result == 'skipped') &&
+      needs.train_pb_poisson.result != 'failure' &&
+      needs.train_pb_poisson.result != 'cancelled' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_pb_dixon_coles')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -209,7 +217,8 @@ jobs:
     needs: train_pb_dixon_coles
     if: |
       always() && !cancelled() &&
-      (needs.train_pb_dixon_coles.result == 'success' || needs.train_pb_dixon_coles.result == 'skipped') &&
+      needs.train_pb_dixon_coles.result != 'failure' &&
+      needs.train_pb_dixon_coles.result != 'cancelled' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_pb_bivariate')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -228,7 +237,8 @@ jobs:
     needs: train_pb_bivariate
     if: |
       always() && !cancelled() &&
-      (needs.train_pb_bivariate.result == 'success' || needs.train_pb_bivariate.result == 'skipped') &&
+      needs.train_pb_bivariate.result != 'failure' &&
+      needs.train_pb_bivariate.result != 'cancelled' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_pb_negbinomial')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -247,7 +257,8 @@ jobs:
     needs: train_pb_negbinomial
     if: |
       always() && !cancelled() &&
-      (needs.train_pb_negbinomial.result == 'success' || needs.train_pb_negbinomial.result == 'skipped') &&
+      needs.train_pb_negbinomial.result != 'failure' &&
+      needs.train_pb_negbinomial.result != 'cancelled' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_pb_zeroinflated')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -266,7 +277,8 @@ jobs:
     needs: train_pb_zeroinflated
     if: |
       always() && !cancelled() &&
-      (needs.train_pb_zeroinflated.result == 'success' || needs.train_pb_zeroinflated.result == 'skipped') &&
+      needs.train_pb_zeroinflated.result != 'failure' &&
+      needs.train_pb_zeroinflated.result != 'cancelled' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_pb_weibull')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -285,7 +297,8 @@ jobs:
     needs: train_pb_weibull
     if: |
       always() && !cancelled() &&
-      (needs.train_pb_weibull.result == 'success' || needs.train_pb_weibull.result == 'skipped') &&
+      needs.train_pb_weibull.result != 'failure' &&
+      needs.train_pb_weibull.result != 'cancelled' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_pb_bayesian')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -304,7 +317,8 @@ jobs:
     needs: train_pb_bayesian
     if: |
       always() && !cancelled() &&
-      (needs.train_pb_bayesian.result == 'success' || needs.train_pb_bayesian.result == 'skipped') &&
+      needs.train_pb_bayesian.result != 'failure' &&
+      needs.train_pb_bayesian.result != 'cancelled' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_pb_hierarchical')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -323,7 +337,8 @@ jobs:
     needs: train_pb_hierarchical
     if: |
       always() && !cancelled() &&
-      (needs.train_pb_hierarchical.result == 'success' || needs.train_pb_hierarchical.result == 'skipped') &&
+      needs.train_pb_hierarchical.result != 'failure' &&
+      needs.train_pb_hierarchical.result != 'cancelled' &&
       (inputs.force_stage == '' || inputs.force_stage == 'finalize')
     uses: ./.github/workflows/_stage_runner.yml
     with:
