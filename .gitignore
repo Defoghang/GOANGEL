@@ -30,3 +30,6 @@ env/
 
 .lfsconfig
 .env
+
+# Cache local (vit sur la branche cache-auto uniquement)
+cache/
