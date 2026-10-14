@@ -1879,27 +1879,48 @@ def _print_match_prediction(
     ml_models: Optional[Dict[str, Any]] = None,
     pb_models: Optional[List[Tuple[str, Any]]] = None,
 ) -> None:
+    # ─── Couleurs ───
+    RESET = "[0m"
+    BOLD = "[1m"
+    RED = "[1;31m"
+    GREEN = "[1;32m"
+    YELLOW = "[1;33m"
+    BLUE = "[1;34m"
+    MAGENTA = "[1;35m"
+    CYAN = "[1;36m"
+    WHITE = "[1;37m"
+    GREY = "[0;90m"
+    ORANGE = "[38;5;208m"
+    LIME = "[38;5;154m"
+    PINK = "[38;5;213m"
+    SKY = "[38;5;117m"
+    GOLD = "[38;5;220m"
+    VIOLET = "[38;5;135m"
+    TEAL = "[38;5;51m"
+
     home_display = _safe_str(row.get("home_raw", ""), default="Home")
     away_display = _safe_str(row.get("away_raw", ""), default="Away")
+    home_up = home_display.upper()
+    away_up = away_display.upper()
 
-    print()
-    print("═" * 70)
-    print(f"⚽ {home_display}  vs  {away_display}")
-    print("═" * 70)
-
+    # ─── Cas 1 : données insuffisantes ───
     if markets.get("insufficient_data"):
         reason = markets.get("insufficient_reason") or "données manquantes"
-        print(" 🚨 Conseiller : Aucun pari conseillé")
-        print(" ⚠️ Pari peu fiable")
-        print(f" ℹ️  Données insuffisantes : {reason}")
+        print()
+        print(f"⚽{BOLD}{GOLD}{home_up} VS {away_up}{RESET}")
+        print(f"  ⚠️  {YELLOW}Données insuffisantes{RESET} : {reason}")
+        print(f"  🚨 {RED}CONSEILLER{RESET} : {RED}Aucun pari conseillé{RESET}")
         return
 
+    # ─── Cas 2 : données invalides ───
     if not _markets_are_valid(markets):
-        print(" 🚨 Conseiller : Aucun pari conseillé")
-        print(" ⚠️ Pari peu fiable")
-        print(" ℹ️  Données invalides ou incohérentes")
+        print()
+        print(f"⚽{BOLD}{GOLD}{home_up} VS {away_up}{RESET}")
+        print(f"  🚨 {RED}CONSEILLER{RESET} : {RED}Aucun pari conseillé{RESET}")
+        print(f"  {GREY}(données invalides ou incohérentes){RESET}")
         return
 
+    # ─── Extraction des données ───
     proba = markets["home_draw_away"]
     lambda_home = float(markets["home_xg"])
     lambda_away = float(markets["away_xg"])
@@ -1907,165 +1928,160 @@ def _print_match_prediction(
     over25 = float(markets["over25"])
     btts_yes = float(markets["btts_yes"])
 
-    winner_label = markets.get("winner_label", "UNKNOWN")
-    winner_prob = markets.get("winner_probability", 0.0)
-    winner_margin = markets.get("winner_margin", 0.0)
-    most_likely_score = markets.get("most_likely_score")
-    most_likely_score_proba = markets.get("most_likely_score_proba")
     top_exact_scores = markets.get("top_exact_scores", [])
-    top_score_bands = markets.get("top_score_bands", [])
-
-    print(" 🎯 PRÉDICTION GAGNANT SEC :")
-    if winner_label == "HOME":
-        winner_display = f"🏠 {home_display}"
-    elif winner_label == "AWAY":
-        winner_display = f"✈️ {away_display}"
-    else:
-        winner_display = "🤝 MATCH NUL"
-
-    winner_confidence = _winner_confidence_label(winner_prob, winner_margin)
-    print(f"    → {winner_display}")
-    print(f"    Confiance : {winner_confidence} "
-          f"({winner_prob * 100:.1f}% / marge {winner_margin * 100:+.1f}%)")
-    print()
-
-    print(" 🎲 SCORE EXACT LE PLUS PROBABLE :")
-    if most_likely_score is not None:
-        print(f"    → {most_likely_score}  ({most_likely_score_proba * 100:.1f}%)")
-    else:
-        print("    → Indisponible")
-    print()
-
-    if top_exact_scores:
-        print(" 📊 TOP SCORES EXACTS :")
-        for i, (score_label, prob) in enumerate(top_exact_scores, 1):
-            bar = "█" * int(prob * 100)
-            print(f"    {i}. {score_label:<6} {prob * 100:5.1f}%  {bar}")
-        print()
-
-    if top_score_bands:
-        print(" 🎯 SCORES GROUPÉS (top 3) :")
-        for i, (band_label, prob) in enumerate(top_score_bands, 1):
-            print(f"    {i}. {band_label:<6} {prob * 100:5.1f}%")
-        print()
-
-    print(f" 🤔 xG : {lambda_home:.2f} - {lambda_away:.2f}")
-    print()
-
-    print(" 📈 MARCHÉS 1X2 :")
-    print(f"    ⚽ {home_display:<28} : {proba[0] * 100:5.1f}%")
-    print(f"    🤝 Nul{'':<25} : {proba[1] * 100:5.1f}%")
-    print(f"    ⚽ {away_display:<28} : {proba[2] * 100:5.1f}%")
-    print()
-
-    print(" 📈 MARCHÉS BUTS :")
-    print(f"    🏆 +1.5 buts : {over15 * 100:5.1f}%  |  -1.5 buts : {(1 - over15) * 100:5.1f}%")
-    print(f"    🏆 +2.5 buts : {over25 * 100:5.1f}%  |  -2.5 buts : {(1 - over25) * 100:5.1f}%")
-    print(f"    🎯 BTTS Oui  : {btts_yes * 100:5.1f}%  |  BTTS Non  : {(1 - btts_yes) * 100:5.1f}%")
-    print()
-
     ht_hda = markets.get("ht_home_draw_away")
-    if isinstance(ht_hda, list) and len(ht_hda) == 3:
-        print(" 📈 MARCHÉS 1ÈRE MI-TEMPS :")
-        print(f"    ⚽ {home_display:<28} : {ht_hda[0] * 100:5.1f}%")
-        print(f"    🤝 Nul{'':<25} : {ht_hda[1] * 100:5.1f}%")
-        print(f"    ⚽ {away_display:<28} : {ht_hda[2] * 100:5.1f}%")
-        ht_over05 = markets.get("ht_over05", 0.0)
-        ht_over15 = markets.get("ht_over15", 0.0)
-        print(f"    🏆 +0.5 buts MT : {ht_over05 * 100:5.1f}%  |  +1.5 buts MT : {ht_over15 * 100:5.1f}%")
-        print()
+    ht_over15 = float(markets.get("ht_over15", 0.0))
 
+    # ─── En-tête ───
+    print()
+    print(f"⚽{BOLD}{GOLD}{home_up} VS {away_up}{RESET}")
+
+    # ─── xG ───
+    print(f"🤔 XG : {CYAN}{lambda_home:.2f}{RESET} - {CYAN}{lambda_away:.2f}{RESET}")
+
+    # ─── Scores probables (top 3) ───
+    if top_exact_scores:
+        parts = []
+        for score_label, prob in top_exact_scores[:3]:
+            parts.append(f"{LIME}{score_label}{RESET} ({prob*100:.1f}%)")
+        print(f"🎯 SCORES PROBABLES : {'  |  '.join(parts)}")
+    else:
+        print(f"🎯 SCORES PROBABLES : {GREY}indisponible{RESET}")
+
+    # ─── 1X2 ───
+    print(f"⚽ {WHITE}{home_up:<28}{RESET} : {LIME}{proba[0]*100:5.1f}%{RESET}")
+    print(f"🤝 {WHITE}NUL{'':<25}{RESET} : {YELLOW}{proba[1]*100:5.1f}%{RESET}")
+    print(f"⚽ {WHITE}{away_up:<28}{RESET} : {SKY}{proba[2]*100:5.1f}%{RESET}")
+
+    # ─── Marchés buts ───
+    print(f"🏆 {WHITE}+1.5 buts{RESET} : {LIME}{over15*100:5.1f}%{RESET}")
+    print(f"🏆 {WHITE}-1.5 buts{RESET} : {PINK}{(1.0-over15)*100:5.1f}%{RESET}")
+    print(f"🏆 {WHITE}+2.5 buts{RESET} : {LIME}{over25*100:5.1f}%{RESET}")
+    print(f"🏆 {WHITE}-2.5 buts{RESET} : {PINK}{(1.0-over25)*100:5.1f}%{RESET}")
+
+    # ─── BTTS ───
+    print(f"🎯 {WHITE}BTTS (Oui){RESET} : {LIME}{btts_yes*100:5.1f}%{RESET}")
+    print(f"🎯 {WHITE}BTTS (Non){RESET} : {PINK}{(1.0-btts_yes)*100:5.1f}%{RESET}")
+
+    # ─── Marchés 1ère MT (multi-couleur) ───
+    if isinstance(ht_hda, list) and len(ht_hda) == 3:
+        print(f"{VIOLET}{BOLD}MARCHÉS 1ÈRE MI-TEMPS :{RESET}")
+        print(
+            f"⚽ {ORANGE}{home_up:<28}{RESET}: "
+            f"{LIME}{ht_hda[0]*100:5.1f}%{RESET}"
+        )
+        print(
+            f"🤝 {ORANGE}NUL{'':<25}{RESET}: "
+            f"{YELLOW}{ht_hda[1]*100:5.1f}%{RESET}"
+        )
+        print(
+            f"⚽ {ORANGE}{away_up:<28}{RESET}: "
+            f"{SKY}{ht_hda[2]*100:5.1f}%{RESET}"
+        )
+        print(
+            f"🏆 {PINK}+1.5 :{RESET} "
+            f"{LIME}{ht_over15*100:5.1f}%{RESET}"
+        )
+        print(
+            f"🏆 {TEAL}-1.5 :{RESET} "
+            f"{MAGENTA}{(1.0-ht_over15)*100:5.1f}%{RESET}"
+        )
+
+    # ─── Sélection du meilleur pari ───
+    n_ml = int(markets.get("model_count_ml", 0))
+    n_pb = int(markets.get("model_count_pb", 0))
+    n_total = int(markets.get("model_count_total", 0))
+
+    uncertainty = markets.get("uncertainty")
+    calibration_validated = markets.get("calibration_validated", True)
+    is_fallback = markets.get("fallback", False)
+
+    bookmaker_odds = markets.get("bookmaker_odds")
+
+    def _no_bet(reason: str) -> None:
+        print(f"💰 {GOLD}COTE{RESET} : {GREY}—{RESET}")
+        print(f"💎 {GOLD}EV{RESET} : {GREY}—{RESET}")
+        print(f"💼 {GOLD}MISE KELLY{RESET} : {GREY}—{RESET}")
+        print(f"🚨 {GOLD}{BOLD}CONSEILLER{RESET} : {RED}Aucun pari conseillé{RESET}")
+        print(f"   {GREY}{reason}{RESET}")
+
+    # Vérifier que les modèles sont suffisamment nombreux
+    if n_ml < _MIN_ACTIVE_ML_MODELS or n_total < _MIN_TOTAL_ACTIVE_MODELS:
+        _no_bet(f"Modèles opérationnels insuffisants ({n_ml} ML + {n_pb} PB)")
+        return
+
+    if is_fallback:
+        _no_bet("Prédiction en mode dégradé")
+        return
+
+    if calibration_validated is False:
+        _no_bet("Calibration non validée")
+        return
+
+    if uncertainty is not None and len(uncertainty) == 3:
+        max_std = float(max(uncertainty))
+        if max_std > _MAX_ACCEPTED_ENSEMBLE_STD:
+            _no_bet(f"Fort désaccord entre modèles (std={max_std:.3f})")
+            return
+
+    # Construire les candidats
     ht_markets = {
         "ht_home_draw_away": markets.get("ht_home_draw_away"),
         "ht_over05": markets.get("ht_over05"),
         "ht_over15": markets.get("ht_over15"),
         "ht_over25": markets.get("ht_over25"),
     }
-
-    n_ml = int(markets.get("model_count_ml", 0))
-    n_pb = int(markets.get("model_count_pb", 0))
-    n_total = int(markets.get("model_count_total", 0))
-    print(" 🤖 MODÈLES :")
-    print(f"    ML : {n_ml}  |  Penaltyblog : {n_pb}  |  Total : {n_total}")
-    if markets.get("calibration_validated") is False:
-        print("    ⚠️ Calibration non validée")
-    if markets.get("fallback"):
-        print("    ⚠️ Mode dégradé (fallback)")
-    print()
-
-    if n_ml < _MIN_ACTIVE_ML_MODELS or n_total < _MIN_TOTAL_ACTIVE_MODELS:
-        print(" 🚨 Conseiller : Aucun pari conseillé")
-        print(" ⚠️ Pari peu fiable")
-        print(f" ℹ️  Modèles opérationnels insuffisants ({n_ml} ML + {n_pb} PB)")
-        print()
-        return
-
-    if markets.get("fallback"):
-        print(" 🚨 Conseiller : Aucun pari conseillé")
-        print(" ⚠️ Pari peu fiable")
-        print(" ℹ️  Prédiction en mode dégradé — aucune recommandation émise")
-        print()
-        return
-
-    if markets.get("calibration_validated") is False:
-        print(" 🚨 Conseiller : Aucun pari conseillé")
-        print(" ⚠️ Pari peu fiable")
-        print(" ℹ️  Calibration non validée — recommandation bloquée")
-        print()
-        return
-
-    uncertainty = markets.get("uncertainty")
-    if uncertainty is not None and len(uncertainty) == 3:
-        max_std = float(max(uncertainty))
-        if max_std > _MAX_ACCEPTED_ENSEMBLE_STD:
-            print(" 🚨 Conseiller : Aucun pari conseillé")
-            print(" ⚠️ Pari peu fiable")
-            print(f" ℹ️  Fort désaccord entre modèles (std max {max_std:.3f})")
-            print()
-            return
-
-    bookmaker_odds = markets.get("bookmaker_odds")
     candidates = _build_market_candidates(
         np.asarray(proba, dtype=np.float64),
         home_display, away_display,
         over15, over25, btts_yes, ht_markets,
     )
+
     best_bet: Optional[Dict[str, Any]] = None
     if bookmaker_odds is not None and _validate_odds_structure(bookmaker_odds):
         best_bet = _select_best_ev_bet(candidates, bookmaker_odds)
-    if best_bet is None:
-        if bookmaker_odds is None:
-            best_bet = _select_best_no_odds_bet(candidates)
-        else:
-            print(" 🚨 Conseiller : Aucun pari conseillé")
-            print(" ⚠️ Pari peu fiable")
-            print(f" ℹ️  Aucun marché n'atteint le seuil d'EV minimal ({_MIN_EV_THRESHOLD * 100:.1f}%)")
-            print()
-            return
+
+    if best_bet is None and bookmaker_odds is None:
+        best_bet = _select_best_no_odds_bet(candidates)
 
     if best_bet is None:
-        print(" 🚨 Conseiller : Aucun pari conseillé")
-        print(" ⚠️ Pari peu fiable")
-        print(" ℹ️  Aucun marché ne dépasse les seuils stricts")
-        print()
+        _no_bet("Aucun marché ne dépasse les seuils d'EV / confiance")
         return
 
+    # ─── Pari recommandé ───
     bet_name = best_bet["name"]
     bet_prob = best_bet["probability"]
-    bet_is_ht = best_bet["is_ht"]
     bet_odds = best_bet.get("odds")
     bet_ev = best_bet.get("ev")
     bet_kelly = best_bet.get("kelly")
+
     if bet_odds is not None:
-        print(f" 💰 Cote du marché recommandé : {bet_odds:.2f}")
-    reliability = _reliability_indicator(bet_prob, bet_is_ht)
-    print(f" 🚨 Conseiller : {bet_name}")
-    print(f" {reliability}")
+        print(f"💰 {GOLD}COTE{RESET} : {WHITE}{bet_odds:.2f}{RESET}")
+    else:
+        print(f"💰 {GOLD}COTE{RESET} : {GREY}indisponible{RESET}")
+
     if bet_ev is not None:
-        print(f" 💎 EV : {bet_ev * 100:.2f}%")
+        if bet_ev > 0.05:
+            ev_color = GREEN
+        elif bet_ev > 0.0:
+            ev_color = YELLOW
+        else:
+            ev_color = RED
+        print(f"💎 {GOLD}EV{RESET} : {ev_color}{bet_ev*100:+.2f}%{RESET}")
+    else:
+        print(f"💎 {GOLD}EV{RESET} : {GREY}—{RESET}")
+
     if bet_kelly is not None and bet_kelly > 0:
-        print(f" 💼 Mise Kelly fractionnée : {bet_kelly * 100:.2f}%")
-    print()
+        print(f"💼 {GOLD}MISE KELLY{RESET} : {CYAN}{bet_kelly*100:.2f}%{RESET}")
+    else:
+        print(f"💼 {GOLD}MISE KELLY{RESET} : {GREY}—{RESET}")
+
+    print(
+        f"🚨 {GOLD}{BOLD}CONSEILLER{RESET} : "
+        f"{GREEN}{BOLD}{bet_name}{RESET} "
+        f"{GREY}({bet_prob*100:.1f}%){RESET}"
+    )
+
 
 
 def _check_required_columns(df: pd.DataFrame) -> bool:

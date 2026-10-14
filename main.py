@@ -288,6 +288,21 @@ _STAGES_ORDER: Tuple[str, ...] = (
     "train_pb_weibull",
     "train_pb_bayesian",
     "train_pb_hierarchical",
+    "finalize_prep",
+    "finalize_xgb",
+    "finalize_lgbm",
+    "finalize_catboost",
+    "finalize_rf",
+    "finalize_dl",
+    "finalize_pb_poisson",
+    "finalize_pb_dixon_coles",
+    "finalize_pb_bivariate",
+    "finalize_pb_negbinomial",
+    "finalize_pb_zeroinflated",
+    "finalize_pb_weibull",
+    "finalize_pb_bayesian",
+    "finalize_pb_hierarchical",
+    "finalize_agg",
     "finalize",
 )
 
@@ -677,6 +692,22 @@ def _stage_artifacts(stage: str) -> List[Path]:
             Path(CACHE_DIR) / "scaler.pkl",
             Path(CACHE_DIR) / "weights.pkl",
         ]
+    if stage == "finalize_prep":
+        return [Path(CACHE_DIR) / "stages" / "finalize" / "context.pkl"]
+    if stage == "finalize_agg":
+        return [
+            Path(CACHE_DIR) / "models.pkl",
+            Path(CACHE_DIR) / "scaler.pkl",
+            Path(CACHE_DIR) / "weights.pkl",
+        ]
+    if stage.startswith("finalize_"):
+        model_key = stage[len("finalize_"):]
+        if model_key in ("xgb", "lgbm", "catboost", "rf", "dl"):
+            model_key = {"xgb": "XGB", "lgbm": "LGBM", "catboost": "CatBoost",
+                         "rf": "RF", "dl": "DL"}[model_key]
+        elif stage in _FINALIZE_PB_MODELS:
+            model_key = _FINALIZE_PB_MODELS[stage]
+        return [Path(CACHE_DIR) / "stages" / "finalize" / f"{model_key}.pkl"]
     return []
 
 
@@ -1028,6 +1059,408 @@ def _stage_train_pb_model(class_name: str) -> None:
     raise RuntimeError(
         f"Erreur réelle sur {class_name} : {meta.get('error', 'unknown')}"
     )
+
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# FINALIZE ÉCLATÉ (15 stages indépendants)
+# ═══════════════════════════════════════════════════════════════════════════
+
+_FINALIZE_ML_MODELS = ("XGB", "LGBM", "CatBoost", "RF", "DL")
+
+_FINALIZE_PB_MODELS = {
+    "finalize_pb_poisson":       "PoissonGoalsModel",
+    "finalize_pb_dixon_coles":   "DixonColesGoalModel",
+    "finalize_pb_bivariate":     "BivariatePoissonGoalModel",
+    "finalize_pb_negbinomial":   "NegativeBinomialGoalModel",
+    "finalize_pb_zeroinflated":  "ZeroInflatedPoissonGoalsModel",
+    "finalize_pb_weibull":       "WeibullCopulaGoalsModel",
+    "finalize_pb_bayesian":      "BayesianGoalModel",
+    "finalize_pb_hierarchical":  "HierarchicalBayesianGoalModel",
+}
+
+
+def _load_payload_features():
+    import pickle
+    payload = _stage_load_features()
+    X = payload["X"]
+    y = payload["y"]
+    home_keys = payload["home_keys"]
+    away_keys = payload["away_keys"]
+    gh_all = payload["gh_all"]
+    ga_all = payload["ga_all"]
+    return X, y, home_keys, away_keys, gh_all, ga_all
+
+
+def _compute_splits(X, y, home_keys, away_keys, gh_all, ga_all):
+    n = len(X)
+    cut_train = int(n * TRAIN_RATIO)
+    cut_val = int(n * (TRAIN_RATIO + VAL_RATIO))
+    cut_calib = int(n * (TRAIN_RATIO + VAL_RATIO + CALIB_RATIO))
+    cut_train = max(1, min(cut_train, n - 4))
+    cut_val = max(cut_train + 1, min(cut_val, n - 3))
+    cut_calib = max(cut_val + 1, min(cut_calib, n - 2))
+    return {
+        "n": n,
+        "cut_train": cut_train,
+        "cut_val": cut_val,
+        "cut_calib": cut_calib,
+        "X_train_raw": X[:cut_train].astype(np.float64, copy=True),
+        "X_calib_raw": X[cut_val:cut_calib].astype(np.float64, copy=True),
+        "X_test_raw": X[cut_calib:].astype(np.float64, copy=True),
+        "y_train": y[:cut_train],
+        "y_calib": y[cut_val:cut_calib],
+        "y_test": y[cut_calib:],
+        "home_keys_train": home_keys[:cut_train],
+        "away_keys_train": away_keys[:cut_train],
+        "home_keys_calib": home_keys[cut_val:cut_calib],
+        "away_keys_calib": away_keys[cut_val:cut_calib],
+        "home_keys_test": home_keys[cut_calib:],
+        "away_keys_test": away_keys[cut_calib:],
+        "gh_train": gh_all[:cut_train],
+        "ga_train": ga_all[:cut_train],
+    }
+
+
+def _stage_finalize_prep() -> None:
+    """Prépare le contexte partagé (splits + imputer + scaler)."""
+    from finalize_split import save_context
+    from sklearn.impute import SimpleImputer
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.pipeline import Pipeline
+
+    stage_print("🔧 FINALIZE PREP — contexte partagé")
+
+    X, y, home_keys, away_keys, gh_all, ga_all = _load_payload_features()
+    ctx = _compute_splits(X, y, home_keys, away_keys, gh_all, ga_all)
+    stage_print(f"   Split : train={ctx['cut_train']} "
+                f"val={ctx['cut_val']-ctx['cut_train']} "
+                f"calib={ctx['cut_calib']-ctx['cut_val']} "
+                f"test={ctx['n']-ctx['cut_calib']}")
+
+    X_train_raw = np.where(np.isfinite(ctx["X_train_raw"]), ctx["X_train_raw"], np.nan)
+    X_calib_raw = np.where(np.isfinite(ctx["X_calib_raw"]), ctx["X_calib_raw"], np.nan)
+    X_test_raw = np.where(np.isfinite(ctx["X_test_raw"]), ctx["X_test_raw"], np.nan)
+
+    imputer = SimpleImputer(strategy="median")
+    X_train_imp = imputer.fit_transform(X_train_raw)
+    X_calib_imp = imputer.transform(X_calib_raw)
+    X_test_imp = imputer.transform(X_test_raw)
+
+    if FEATURE_OUTLIER_ZSCORE > 0:
+        from features import _clip_outliers_signed
+        X_train_imp, [X_calib_imp, X_test_imp] = _clip_outliers_signed(
+            X_train_imp, [X_calib_imp, X_test_imp], float(FEATURE_OUTLIER_ZSCORE),
+        )
+
+    scaler_only = StandardScaler()
+    Xs_train = scaler_only.fit_transform(X_train_imp)
+    Xs_calib = scaler_only.transform(X_calib_imp)
+    Xs_test = scaler_only.transform(X_test_imp)
+    pipeline = Pipeline([("imputer", imputer), ("scaler", scaler_only)])
+
+    ctx.update({
+        "X_train_imp": X_train_imp,
+        "X_calib_imp": X_calib_imp,
+        "X_test_imp": X_test_imp,
+        "Xs_train": Xs_train,
+        "Xs_calib": Xs_calib,
+        "Xs_test": Xs_test,
+        "pipeline": pipeline,
+    })
+
+    save_context(ctx)
+    stage_print("💾 Contexte sauvegardé : cache/stages/finalize/context.pkl")
+
+
+def _finalize_ml_one(model_name: str) -> None:
+    from finalize_split import load_context, save_partial
+    from sklearn.metrics import log_loss
+
+    stage_print(f"🔧 FINALIZE ML — {model_name}")
+    ctx = load_context()
+    if ctx is None:
+        raise RuntimeError("Contexte finalize absent — lancer finalize_prep d'abord")
+
+    model_path = MODELS_DIR / f"ml_{model_name}.pkl"
+    if not model_path.exists():
+        raise RuntimeError(f"Modèle absent : {model_path}")
+
+    from predict import _atomic_read_pickle
+    payload_m = _atomic_read_pickle(model_path)
+    base = payload_m["model"]
+
+    Xs_calib = ctx["Xs_calib"]
+    X_calib_raw = np.where(np.isfinite(ctx["X_calib_raw"]), ctx["X_calib_raw"], np.nan)
+    y_calib = ctx["y_calib"]
+    X_train_raw = np.where(np.isfinite(ctx["X_train_raw"]), ctx["X_train_raw"], np.nan)
+
+    if model_name == "DL":
+        from features import (
+            _calibrate_or_keep, _model_produces_three_classes,
+            _compute_calibration_log_loss, _evaluate_dl_walk_forward,
+            _TorchProbaWrapper, _CALIBRATION_STATUS_RAW_KEPT,
+        )
+        calibrated, st = _calibrate_or_keep(model_name, base, Xs_calib, y_calib)
+        if not _model_produces_three_classes(calibrated, Xs_calib, model_name):
+            calibrated = _TorchProbaWrapper(base)
+            st = _CALIBRATION_STATUS_RAW_KEPT
+        calib_ll = _compute_calibration_log_loss(
+            calibrated, Xs_calib, y_calib, None, model_name,
+        )
+        ll_wf, ev, at = _evaluate_dl_walk_forward(
+            X_train_raw, ctx["y_train"], MODEL_WALK_FORWARD_FOLDS,
+            Xs_calib.shape[1],
+        )
+    else:
+        from features import (
+            _calibrate_or_keep, _model_produces_three_classes,
+            _compute_calibration_log_loss, _evaluate_ml_model_walk_forward,
+            _CALIBRATION_STATUS_RAW_KEPT, _TREE_MODELS_NAN_NATIVE,
+        )
+        if model_name in _TREE_MODELS_NAN_NATIVE:
+            X_calib_fit = X_calib_raw
+        else:
+            X_calib_fit = Xs_calib
+        calibrated, st = _calibrate_or_keep(model_name, base, X_calib_fit, y_calib)
+        if not _model_produces_three_classes(calibrated, X_calib_fit, model_name):
+            calibrated = base
+            st = _CALIBRATION_STATUS_RAW_KEPT
+        calib_ll = _compute_calibration_log_loss(
+            calibrated, X_calib_fit, y_calib, X_calib_fit, model_name,
+        )
+        from features import (
+            _make_xgb_factory, _make_lgbm_factory,
+            _make_catboost_factory, _make_rf_factory,
+        )
+        factory_map = {
+            "XGB": _make_xgb_factory(),
+            "LGBM": _make_lgbm_factory(),
+            "CatBoost": _make_catboost_factory(),
+            "RF": _make_rf_factory(),
+        }
+        factory = factory_map.get(model_name)
+        if factory is None:
+            raise RuntimeError(f"Factory inconnue pour {model_name}")
+        ll_wf, ev, at = _evaluate_ml_model_walk_forward(
+            factory, X_train_raw, ctx["y_train"],
+            MODEL_WALK_FORWARD_FOLDS, model_name,
+        )
+
+    stage_print(
+        f"✅ {model_name} : CALIB {float(calib_ll):.4f} | "
+        f"WF {float(ll_wf):.4f} ({ev}/{at})"
+    )
+
+    # Sauvegarder le modèle calibré pour l'agrégation finale
+    save_partial(model_name, {
+        "model_key": model_name,
+        "calibrated": calibrated,
+        "calib_ll": float(calib_ll),
+        "wf_ll": float(ll_wf),
+        "wf_eval": ev,
+        "wf_attempt": at,
+        "calib_status": st,
+    })
+
+
+def _finalize_pb_one(stage_name: str, class_name: str) -> None:
+    from finalize_split import load_context, save_partial
+    from sklearn.metrics import log_loss
+    from features import (
+        _evaluate_pb_model_walk_forward, _extract_model_probabilities,
+        _PB_MODEL_ORDER,
+    )
+
+    stage_print(f"🔧 FINALIZE PB — {class_name}")
+    ctx = load_context()
+    if ctx is None:
+        raise RuntimeError("Contexte finalize absent — lancer finalize_prep d'abord")
+
+    model_path = MODELS_DIR / f"pb_{class_name}.pkl"
+    if not model_path.exists():
+        raise RuntimeError(f"Modèle absent : {model_path}")
+
+    from predict import _atomic_read_pickle
+    payload_pb = _atomic_read_pickle(model_path)
+    model = payload_pb["model"]
+
+    y_calib = ctx["y_calib"]
+    home_keys_calib = ctx["home_keys_calib"]
+    away_keys_calib = ctx["away_keys_calib"]
+
+    probas = []
+    y_kept = []
+    for h, a, yv in zip(home_keys_calib, away_keys_calib, y_calib):
+        try:
+            grid = model.predict(h, a)
+            markets = _extract_model_probabilities(grid)
+            hda = markets.get("home_draw_away")
+            if hda is None or len(hda) != 3:
+                continue
+            arr = np.asarray(hda, dtype=np.float64)
+            if arr.sum() <= 0:
+                continue
+            probas.append((arr / arr.sum()).tolist())
+            y_kept.append(int(yv))
+        except Exception:
+            continue
+
+    if len(probas) < 30:
+        raise RuntimeError(f"{class_name} : trop peu de prédictions valides ({len(probas)})")
+
+    probas_arr = np.array(probas, dtype=np.float64)
+    y_arr = np.array(y_kept, dtype=np.int64)
+    calib_ll = float(log_loss(y_arr, probas_arr, labels=[0, 1, 2]))
+
+    ll_wf, ev, at = _evaluate_pb_model_walk_forward(
+        class_name, ctx["gh_train"], ctx["ga_train"],
+        ctx["home_keys_train"], ctx["away_keys_train"],
+        MODEL_WALK_FORWARD_FOLDS,
+    )
+    if not np.isfinite(ll_wf):
+        ll_wf = calib_ll
+
+    stage_print(
+        f"✅ {class_name} : CALIB {calib_ll:.4f} | "
+        f"WF {float(ll_wf):.4f} ({ev}/{at})"
+    )
+
+    save_partial(class_name, {
+        "model_key": class_name,
+        "calib_ll": calib_ll,
+        "wf_ll": float(ll_wf),
+        "wf_eval": ev,
+        "wf_attempt": at,
+        "calib_status": "not_calibrated",
+    })
+
+
+def _stage_finalize_agg() -> None:
+    """Agrège tous les partials + calcule les poids + sauvegarde le cache final."""
+    from finalize_split import load_context, list_partials
+    from features import (
+        _filter_valid_weights, _normalize_weights,
+        _select_fallback_uniform_models, _apply_quality_filter_on_weights,
+        _compute_optimal_temperature, _compute_ensemble_probas,
+        _evaluate_ensemble_on_set, FEATURE_NAMES, _compute_calibration_log_loss,
+        _MAX_ACCEPTABLE_LOGLOSS,
+    )
+    from config import (
+        TEMPERATURE_SCALING_ENABLED, TEMPERATURE_SCALING_DEFAULT,
+        ENSEMBLE_MIN_WEIGHT, ENSEMBLE_MAX_WEIGHT,
+    )
+
+    stage_print("🔧 FINALIZE AGG — agrégation finale")
+    ctx = load_context()
+    if ctx is None:
+        raise RuntimeError("Contexte finalize absent")
+
+    partials = list_partials()
+    stage_print(f"   {len(partials)} partials chargés")
+
+    ml_models = {}
+    pb_models = []
+    for key, pl in partials.items():
+        if key in _FINALIZE_ML_MODELS:
+            if "calibrated" in pl and pl["calibrated"] is not None:
+                ml_models[key] = pl["calibrated"]
+        else:
+            # PB model — recharger depuis le cache stages
+            model_path = MODELS_DIR / f"pb_{key}.pkl"
+            if model_path.exists():
+                from predict import _atomic_read_pickle
+                try:
+                    payload = _atomic_read_pickle(model_path)
+                    pb_models.append((key, payload["model"]))
+                except Exception:
+                    pass
+
+    stage_print(f"   ML : {len(ml_models)} | PB : {len(pb_models)}")
+
+    wf_ll_map = {k: p.get("wf_ll", float("inf")) for k, p in partials.items() if "wf_ll" in p}
+    calib_ll_map = {k: p.get("calib_ll", float("inf")) for k, p in partials.items() if "calib_ll" in p}
+
+    # Reconstruire les clés PB attendues (pb_0, pb_1, ...)
+    pb_partials_order = []
+    for i, (class_name, _) in enumerate(pb_models):
+        pb_partials_order.append((f"pb_{i}", class_name))
+
+    weights_raw = {}
+    for k, ll in wf_ll_map.items():
+        try:
+            ll_f = float(ll)
+        except (TypeError, ValueError):
+            ll_f = float("inf")
+        if np.isfinite(ll_f) and 0 < ll_f <= _MAX_ACCEPTABLE_LOGLOSS:
+            weights_raw[k] = 1.0 / (ll_f + 1e-6)
+        else:
+            weights_raw[k] = 0.0
+
+    filtered_weights = _filter_valid_weights(weights_raw)
+    if not any(not k.startswith("__") for k in filtered_weights):
+        fallback = _select_fallback_uniform_models(ml_models, pb_models, wf_ll_map)
+        if fallback:
+            u = 1.0 / len(fallback)
+            for k in fallback:
+                filtered_weights[k] = u
+    else:
+        filtered_weights = _apply_quality_filter_on_weights(filtered_weights, wf_ll_map)
+
+    weights = _normalize_weights(
+        filtered_weights, ENSEMBLE_MIN_WEIGHT, ENSEMBLE_MAX_WEIGHT,
+    )
+
+    temperature_validated = False
+    if TEMPERATURE_SCALING_ENABLED:
+        try:
+            calib_blend = _compute_ensemble_probas(
+                ml_models, pb_models,
+                ctx["Xs_calib"], ctx["home_keys_calib"], ctx["away_keys_calib"],
+                weights, np.where(np.isfinite(ctx["X_calib_raw"]), ctx["X_calib_raw"], np.nan),
+            )
+            if calib_blend is not None:
+                temp, ok = _compute_optimal_temperature(calib_blend, ctx["y_calib"])
+                weights["__temperature__"] = float(temp)
+                temperature_validated = bool(ok)
+            else:
+                weights["__temperature__"] = float(TEMPERATURE_SCALING_DEFAULT)
+        except Exception:
+            weights["__temperature__"] = float(TEMPERATURE_SCALING_DEFAULT)
+
+    weights["__temperature_validated__"] = bool(temperature_validated)
+    weights["__ll_source_map__"] = {k: "walk_forward" for k in wf_ll_map}
+    weights["__calibration_status_map__"] = {k: p.get("calib_status", "unknown") for k, p in partials.items()}
+    weights["__walk_forward_ll_map__"] = wf_ll_map
+    weights["__calibration_ll_map__"] = calib_ll_map
+    weights["__feature_names__"] = list(FEATURE_NAMES)
+    weights["__feature_count__"] = int(EXPECTED_FEATURE_COUNT)
+    weights["__cache_version__"] = "v10"
+    weights["__score_grid_size__"] = 12
+    weights["__data_source__"] = "bzzoiro"
+
+    # Test final
+    final_temp = float(weights.get("__temperature__", 1.0))
+    test_metrics = _evaluate_ensemble_on_set(
+        ml_models, pb_models,
+        ctx["Xs_test"], ctx["y_test"],
+        ctx["home_keys_test"], ctx["away_keys_test"],
+        weights, final_temp,
+        np.where(np.isfinite(ctx["X_test_raw"]), ctx["X_test_raw"], np.nan),
+    )
+    if test_metrics:
+        ll_test, acc_test = test_metrics
+        stage_print(f"📊 TEST FINAL : LogLoss {ll_test:.4f} | Accuracy {acc_test*100:.1f}%")
+        weights["__test_logloss__"] = float(ll_test)
+        weights["__test_accuracy__"] = float(acc_test)
+
+    # Sauvegarder cache final
+    hist_path = Path(CACHE_DIR) / "historical.pkl"
+    _atomic_write_pickle(Path(CACHE_DIR) / "models.pkl", (ml_models, pb_models))
+    _atomic_write_pickle(Path(CACHE_DIR) / "scaler.pkl", ctx["pipeline"])
+    _atomic_write_pickle(Path(CACHE_DIR) / "weights.pkl", weights)
+    stage_print(f"💾 Cache final sauvegardé dans {CACHE_DIR}")
+    stage_print(f"   ML : {len(ml_models)} | PB : {len(pb_models)} | Poids : {len(weights)}")
 
 def _stage_finalize() -> None:
     payload = _stage_load_features()
