@@ -629,15 +629,3 @@ jobs:
     with:
       version: ""
     secrets: inherit
-
-  release:
-    name: "16 - Release"
-    needs: finalize
-    if: |
-      always() && !cancelled() &&
-      inputs.force_stage == '' &&
-      needs.finalize.result == 'success'
-    uses: ./.github/workflows/release.yml
-    with:
-      version: ""
-    secrets: inherit
