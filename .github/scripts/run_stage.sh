@@ -163,6 +163,20 @@ if [ -d "${GITHUB_WORKSPACE}/cache" ]; then
   cp -r "${GITHUB_WORKSPACE}/cache/." cache/ 2>/dev/null || true
 fi
 git add -A
+git add -f cache/ 2>/dev/null || true
+git add -f cache/stages/ 2>/dev/null || true
+git add -f cache/stages/done/ 2>/dev/null || true
+git add -f cache/stages/attempts/ 2>/dev/null || true
+git add -f cache/stages/models/ 2>/dev/null || true
+git add -f cache/stages/features.pkl 2>/dev/null || true
+git add -f cache/stages/metadata.pkl 2>/dev/null || true
+git add -f cache/historical.pkl 2>/dev/null || true
+git add -f cache/models.pkl 2>/dev/null || true
+git add -f cache/scaler.pkl 2>/dev/null || true
+git add -f cache/weights.pkl 2>/dev/null || true
+
+git status --short | head -20
+
 git commit -m "checkpoint ${STAGE} run${GITHUB_RUN_ID} att${NEW_COUNT} rc${RC} $(date +%s)" || echo "no changes"
 
 PUSH_OK=0
