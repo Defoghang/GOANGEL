@@ -143,6 +143,9 @@ mkdir -p cache
 if [ -d "${GITHUB_WORKSPACE}/cache" ]; then
   cp -r "${GITHUB_WORKSPACE}/cache/." cache/ 2>/dev/null || true
 fi
+# Supprimer les fichiers trop gros du push (inutiles, > 50 MB)
+rm -f cache/checkpoints/raw_matches.jsonl 2>/dev/null || true
+
 git add -A
 git add -f cache/ 2>/dev/null || true
 git add -f cache/stages/ 2>/dev/null || true
@@ -178,6 +181,11 @@ if [ "${PUSH_OK}" != "1" ]; then
 fi
 echo "✅ cache-auto pushé (stage=${STAGE})"
 
+
+if [ "${RC}" = "0" ]; then
+  echo "✅ Stage ${STAGE} terminé avec succès (RC=0)"
+  exit 0
+fi
 
 if [ "${RC}" = "42" ]; then
   echo "⏸️  PB INCOMPLET sur ${STAGE} (RC=42) — soft-retry nouvelle tentative"
