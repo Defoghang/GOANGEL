@@ -91,25 +91,6 @@ fi
 
 if [ -f "cache/stages/done/${STAGE}.done" ]; then
   echo "✅ Stage ${STAGE} déjà terminé (marqueur .done présent) — skip"
-  if [ "${IS_RETRY}" = "true" ]; then
-    NEXT=$(python3 main.py --stage next 2>/dev/null | grep '^NEXT:' | cut -d: -f2 | tr -d '[:space:]')
-    echo "🔗 Stage suivant détecté (skip chain) : ${NEXT}"
-    if [ -n "${NEXT}" ] && [ "${NEXT}" != "DONE" ]; then
-      sleep 12
-      gh workflow run train.yml --repo "${GITHUB_REPOSITORY}" \
-        -f seasons_lookback=${SEASONS} \
-        -f enrich_xg=${ENRICH} \
-        -f workers_per_key=${WORKERS_PER_KEY} \
-        -f max_workers=${MAX_WORKERS} \
-        -f rate_limit_per_minute=${RATE_LIMIT} \
-        -f max_attempts_per_model=${MAX_ATTEMPTS} \
-        -f force_stage=${NEXT} \
-        -f is_retry=true
-      echo "🚀 Nouveau run déclenché pour ${NEXT}"
-    else
-      echo "🏁 Tous les stages sont done — DONE"
-    fi
-  fi
   exit 0
 fi
 
@@ -197,63 +178,6 @@ if [ "${PUSH_OK}" != "1" ]; then
 fi
 echo "✅ cache-auto pushé (stage=${STAGE})"
 
-if [ "${RC}" = "0" ]; then
-  if [ "${IS_RETRY}" = "true" ]; then
-    NEXT=$(python3 main.py --stage next 2>/dev/null | grep '^NEXT:' | cut -d: -f2 | tr -d '[:space:]')
-    echo "🔗 Stage suivant détecté : ${NEXT}"
-
-    if [ -z "${NEXT}" ] || [ "${NEXT}" = "DONE" ]; then
-      echo ""
-      echo "═══════════════════════════════════════════════════════════"
-      echo "  🎉 PIPELINE COMPLET — TOUS LES STAGES SONT TERMINÉS"
-      echo "═══════════════════════════════════════════════════════════"
-      exit 0
-    fi
-
-    sleep 20
-
-    TRIGGERED=0
-    for trigger_attempt in 1 2 3; do
-      echo "  Trigger ${trigger_attempt}/3 pour ${NEXT}..."
-      TRIGGER_OUTPUT=$(gh workflow run train.yml --repo "${GITHUB_REPOSITORY}" \
-        -f seasons_lookback=${SEASONS} \
-        -f enrich_xg=${ENRICH} \
-        -f workers_per_key=${WORKERS_PER_KEY} \
-        -f max_workers=${MAX_WORKERS} \
-        -f rate_limit_per_minute=${RATE_LIMIT} \
-        -f max_attempts_per_model=${MAX_ATTEMPTS} \
-        -f force_stage=${NEXT} \
-        -f is_retry=true 2>&1)
-      TRIGGER_RC=$?
-      echo "  gh workflow run output : ${TRIGGER_OUTPUT}"
-      if [ "${TRIGGER_RC}" = "0" ]; then
-        echo "  ✅ Trigger réussi (RC=0)"
-        TRIGGERED=1
-        break
-      fi
-      echo "  ⚠️  Trigger RC=${TRIGGER_RC} — retry dans 10s..."
-      echo "  ⚠️  Trigger échoué, retry dans 10s..."
-      sleep 10
-    done
-
-    if [ "${TRIGGERED}" = "1" ]; then
-      echo "🚀 Nouveau run déclenché pour ${NEXT}"
-      sleep 5
-      echo "─── Runs récents ───"
-      gh run list --repo "${GITHUB_REPOSITORY}" --workflow=train.yml --limit 3 || true
-    else
-      echo ""
-      echo "═══════════════════════════════════════════════════════════"
-      echo "  ❌ ÉCHEC DÉCLENCHEMENT WORKFLOW pour ${NEXT}"
-      echo "  Après 3 tentatives — ARRÊT DE LA CHAÎNE"
-      echo "═══════════════════════════════════════════════════════════"
-      echo "::error::Impossible de déclencher le stage suivant ${NEXT}"
-      exit 4
-    fi
-  fi
-
-  exit 0
-fi
 
 if [ "${RC}" = "42" ]; then
   echo "⏸️  PB INCOMPLET sur ${STAGE} (RC=42) — soft-retry nouvelle tentative"
