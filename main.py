@@ -1838,6 +1838,27 @@ def _stage_run(stage_name: str) -> int:
             _stage_train_pb_model(_PB_STAGE_KEYS[stage_name])
         elif stage_name == "finalize":
             _stage_finalize()
+        elif stage_name == "finalize_prep":
+            _stage_finalize_prep()
+        elif stage_name == "finalize_agg":
+            _stage_finalize_agg()
+        elif stage_name in _FINALIZE_PB_MODELS:
+            _finalize_pb_one(stage_name, _FINALIZE_PB_MODELS[stage_name])
+        elif stage_name.startswith("finalize_"):
+            model_name = stage_name[len("finalize_"):]
+            if model_name == "xgb":
+                _finalize_ml_one("XGB")
+            elif model_name == "lgbm":
+                _finalize_ml_one("LGBM")
+            elif model_name == "catboost":
+                _finalize_ml_one("CatBoost")
+            elif model_name == "rf":
+                _finalize_ml_one("RF")
+            elif model_name == "dl":
+                _finalize_ml_one("DL")
+            else:
+                print(f"{RED}Stage inconnu : {stage_name}{RESET}")
+                return 2
         else:
             print(f"{RED}Stage inconnu : {stage_name}{RESET}")
             return 2
