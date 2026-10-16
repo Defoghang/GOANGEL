@@ -185,13 +185,18 @@ def _atomic_write_pickle(path: Path, obj: Any) -> None:
 
 
 def _atomic_read_pickle(path: Path) -> Any:
-    """Lit un pickle en auto-détectant xz/gzip/brut. Rétrocompatible avec
-    les fichiers écrits par _atomic_write_pickle (xz si > seuil)."""
+    """Lit un pickle en auto-détectant xz/gzip/brut + pointeur LFS."""
     if not path.exists():
         raise FileNotFoundError(f"Fichier pickle introuvable : {path}")
 
     with open(path, "rb") as f:
         magic = f.read(6)
+
+    if magic.startswith(b"version https://git-lfs"):
+        raise RuntimeError(
+            f"❌ {path} est un POINTEUR LFS, pas le vrai fichier. "
+            f"Exécuter 'git lfs pull' avant. Taille : {path.stat().st_size} bytes"
+        )
 
     if magic[:6] == b"\xfd7zXZ\x00":
         import lzma

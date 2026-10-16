@@ -65,17 +65,53 @@ if gh api "repos/${GITHUB_REPOSITORY}/branches/cache-auto" >/dev/null 2>&1; then
     "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
     /tmp/ckpt_restore 2>/dev/null
 
-  # ← Résoudre les pointeurs LFS en vrais blobs
+  # ← Résoudre les pointeurs LFS en vrais blobs (méthode robuste)
   if [ -d /tmp/ckpt_restore ]; then
     cd /tmp/ckpt_restore
-    if ! git lfs pull 2>&1 | tail -3; then
-      echo "⚠️  git lfs pull échoué (continuera avec les fichiers disponibles)"
+
+    git lfs install --local --skip-repo 2>/dev/null || true
+
+    echo "  📥 git lfs fetch --all..."
+    git lfs fetch --all 2>&1 | tail -2 || true
+
+    echo "  📥 git lfs checkout..."
+    git lfs checkout 2>&1 | tail -2 || true
+
+    echo "  📥 git lfs pull..."
+    git lfs pull 2>&1 | tail -2 || true
+
+    echo "  🔍 Vérification pointeurs LFS..."
+    LFS_POINTER=0
+    for f in cache/historical.pkl cache/stages/features.pkl; do
+      if [ -f "$f" ]; then
+        HEAD_BYTES=$(head -c 4 "$f" 2>/dev/null || echo "")
+        SIZE=$(stat -c%s "$f" 2>/dev/null || echo 0)
+        if [ "$HEAD_BYTES" = "vers" ] || [ "$SIZE" -lt 1000 ]; then
+          echo "  ❌ POINTEUR LFS : $f ($SIZE bytes)"
+          LFS_POINTER=1
+        else
+          echo "  ✅ Fichier réel : $f ($SIZE bytes)"
+        fi
+      fi
+    done
+
+    if [ "$LFS_POINTER" = "1" ]; then
+      echo "  ⚠️  Pointeurs LFS détectés — tentative ultime git lfs pull -I..."
+      git lfs pull -I "cache/historical.pkl,cache/stages/features.pkl" 2>&1 | tail -2 || true
     fi
+
     cd "${GITHUB_WORKSPACE}"
   fi
 
   if [ -d /tmp/ckpt_restore/cache ]; then
     cp -r /tmp/ckpt_restore/cache/. cache/ 2>/dev/null || true
+    echo "  🔍 Vérification post-copie :"
+    for f in cache/historical.pkl cache/stages/features.pkl; do
+      if [ -f "$f" ]; then
+        SZ=$(stat -c%s "$f" 2>/dev/null || echo 0)
+        echo "     $f : $SZ bytes"
+      fi
+    done
   fi
 fi
 
