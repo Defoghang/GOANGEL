@@ -61,24 +61,24 @@ mkdir -p cache
 if gh api "repos/${GITHUB_REPOSITORY}/branches/cache-auto" >/dev/null 2>&1; then
   echo "↻ Restauration cache-auto..."
   rm -rf /tmp/ckpt_restore
+  export GIT_LFS_SKIP_SMUDGE=0
+
+  git lfs install --local 2>&1 | tail -1
+
   git clone --depth 1 --branch cache-auto \
     "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
-    /tmp/ckpt_restore 2>/dev/null
+    /tmp/ckpt_restore 2>&1 | tail -3
 
-  # ← Résoudre les pointeurs LFS en vrais blobs (méthode robuste)
   if [ -d /tmp/ckpt_restore ]; then
     cd /tmp/ckpt_restore
 
-    git lfs install --local --skip-repo 2>/dev/null || true
+    git lfs install --local 2>&1 | tail -1
 
-    echo "  📥 git lfs fetch --all..."
-    git lfs fetch --all 2>&1 | tail -2 || true
+    echo "  📥 git lfs pull origin cache-auto..."
+    git lfs pull origin cache-auto 2>&1 | tail -3 || true
 
-    echo "  📥 git lfs checkout..."
-    git lfs checkout 2>&1 | tail -2 || true
-
-    echo "  📥 git lfs pull..."
-    git lfs pull 2>&1 | tail -2 || true
+    echo "  🔄 Restauration forcée des fichiers..."
+    git checkout cache-auto -- . 2>&1 | tail -2 || true
 
     echo "  🔍 Vérification pointeurs LFS..."
     LFS_POINTER=0
@@ -96,8 +96,17 @@ if gh api "repos/${GITHUB_REPOSITORY}/branches/cache-auto" >/dev/null 2>&1; then
     done
 
     if [ "$LFS_POINTER" = "1" ]; then
-      echo "  ⚠️  Pointeurs LFS détectés — tentative ultime git lfs pull -I..."
-      git lfs pull -I "cache/historical.pkl,cache/stages/features.pkl" 2>&1 | tail -2 || true
+      echo "  ⚠️  Pointeurs restants — tentative par OID direct..."
+      for f in cache/historical.pkl cache/stages/features.pkl; do
+        if [ -f "$f" ]; then
+          OID=$(head -2 "$f" | grep -oE 'sha256:[a-f0-9]+' | cut -d: -f2)
+          if [ -n "$OID" ]; then
+            echo "     OID de $f : $OID"
+            git lfs fetch origin "$OID" 2>&1 | tail -1 || true
+          fi
+        fi
+      done
+      git lfs checkout 2>&1 | tail -2 || true
     fi
 
     cd "${GITHUB_WORKSPACE}"
