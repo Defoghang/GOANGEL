@@ -133,10 +133,19 @@ mkdir -p cache/stages/done cache/stages/attempts cache/stages/models
 # ─── 1. Drive en priorité (gros fichiers) ───
 if [ -f /tmp/rclone.conf ]; then
   echo "  📥 Drive : cache/..."
-  rclone --config /tmp/rclone.conf sync gdrive:GOANGEL/cache/ cache/ \
+  rclone --config /tmp/rclone.conf copy gdrive:GOANGEL/cache/ cache/ \
     --transfers 8 --checkers 16 \
     --exclude "*.tmp" --exclude "*.log" \
+    --ignore-existing \
     --stats-one-line --stats 10s 2>&1 | tail -3 || true
+
+  echo "  📥 Drive : cache/stages/models/ (modèles critiques)"
+  rclone --config /tmp/rclone.conf copy gdrive:GOANGEL/cache/stages/models/ cache/stages/models/ \
+    --transfers 8 --checkers 16 --ignore-existing 2>&1 | tail -2 || true
+
+  echo "  📥 Drive : cache/stages/finalize/"
+  rclone --config /tmp/rclone.conf copy gdrive:GOANGEL/cache/stages/finalize/ cache/stages/finalize/ \
+    --transfers 8 --checkers 16 --ignore-existing 2>&1 | tail -2 || true
 
   echo "  🔍 Vérification :"
   for f in cache/historical.pkl cache/stages/features.pkl; do
@@ -201,12 +210,28 @@ echo "☁️  Push cache → Google Drive + GitHub (marqueurs)..."
 
 # ─── 1. Push Drive (tout le cache) ───
 if [ -f /tmp/rclone.conf ]; then
-  echo "  📤 Drive : cache/..."
-  rclone --config /tmp/rclone.conf sync cache/ gdrive:GOANGEL/cache/ \
-    --transfers 8 --checkers 16 \
-    --exclude "*.tmp" --exclude "*.log" \
-    --stats-one-line --stats 10s 2>&1 | tail -3 || true
-  echo "  ✅ Drive pushé"
+  # Garde-fou : ne pusher QUE si cache local est substantiel (> 10 MB)
+  CACHE_MB=$(du -sm cache 2>/dev/null | awk '{print $1}' || echo 0)
+  echo "  📊 Cache local : ${CACHE_MB} MB"
+
+  if [ "$CACHE_MB" -lt 10 ]; then
+    echo "  ⚠️  Cache trop petit (${CACHE_MB} MB < 10 MB) — skip Drive push (évite écrasement)"
+  else
+    echo "  📤 Drive : copy cache/ (non destructif)..."
+    rclone --config /tmp/rclone.conf copy cache/ gdrive:GOANGEL/cache/ \
+      --transfers 8 --checkers 16 \
+      --exclude "*.tmp" --exclude "*.log" \
+      --exclude "checkpoints/**" \
+      --stats-one-line --stats 10s 2>&1 | tail -3 || true
+    echo "  ✅ Drive pushé"
+
+    # Push spécifique des modèles (sans --ignore-existing pour mise à jour)
+    if [ -d cache/stages/models ] && [ "$(ls -A cache/stages/models 2>/dev/null)" ]; then
+      echo "  📤 Drive : cache/stages/models/ (mise à jour)"
+      rclone --config /tmp/rclone.conf copy cache/stages/models/ gdrive:GOANGEL/cache/stages/models/ \
+        --transfers 8 --checkers 16 2>&1 | tail -2 || true
+    fi
+  fi
 fi
 
 # ─── 2. Push GitHub cache-auto (marqueurs uniquement) ───
