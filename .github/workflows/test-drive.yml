@@ -1,0 +1,36 @@
+name: Test Drive Upload
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install rclone
+        run: |
+          curl -sS https://rclone.org/install.sh | sudo bash >/dev/null 2>&1
+          rclone version | head -1
+
+      - name: Setup rclone config
+        env:
+          RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
+        run: |
+          echo "${RCLONE_CONFIG}" | base64 -d > /tmp/rclone.conf
+          chmod 600 /tmp/rclone.conf
+
+      - name: Test connexion
+        run: |
+          rclone --config /tmp/rclone.conf lsd gdrive:GOANGEL --max-depth 1
+          echo "✅ Connexion Drive OK"
+
+      - name: Upload test_drive.txt
+        run: |
+          echo "── Upload test_drive.txt ──"
+          rclone --config /tmp/rclone.conf copy test_drive.txt gdrive:GOANGEL/ --progress --stats-one-line
+          echo "── Vérification ──"
+          rclone --config /tmp/rclone.conf lsf gdrive:GOANGEL/ | head -20
+          echo "── Contenu remote ──"
+          rclone --config /tmp/rclone.conf cat gdrive:GOANGEL/test_drive.txt
