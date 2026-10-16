@@ -1,4 +1,4 @@
-name: Restore Drive from LFS
+name: Restore Drive from LFS History
 
 on:
   workflow_dispatch:
@@ -8,11 +8,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
-
       - name: Install rclone
         run: |
           curl -sS https://rclone.org/install.sh | sudo bash >/dev/null 2>&1
+          rclone version | head -1
 
       - name: Setup rclone config
         env:
@@ -21,41 +20,159 @@ jobs:
           echo "${RCLONE_CONFIG}" | base64 -d > /tmp/rclone.conf
           chmod 600 /tmp/rclone.conf
 
-      - name: Clone cache-auto with LFS
+      - name: Clone cache-auto full history with LFS
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           export GIT_LFS_SKIP_SMUDGE=0
-          git lfs install --local >/dev/null 2>&1 || true
-          git clone --branch cache-auto \
-            "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" \
-            /tmp/cache-auto 2>&1 | tail -3
+          git lfs install --local 2>/dev/null || git lfs install
 
-      - name: Restore LFS blobs from refs
+          git clone \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" \
+            /tmp/cache-repo 2>&1 | tail -3
+
+          cd /tmp/cache-repo
+          git fetch --all
+          git checkout cache-auto
+
+          echo "── Logs LFS dans l'historique complet ──"
+          git log --all --oneline | head -5
+          echo "..."
+          git log --all --oneline | wc -l
+          echo "commits"
+
+      - name: Fetch ALL LFS objects from history
         run: |
-          cd /tmp/cache-auto
+          cd /tmp/cache-repo
           export GIT_LFS_SKIP_SMUDGE=0
-          git lfs fetch --all 2>&1 | tail -3 || true
-          git lfs checkout 2>&1 | tail -3 || true
-          git lfs pull origin cache-auto 2>&1 | tail -3 || true
 
-          echo "── Contenu :"
-          find . -name "*.pkl" -size +1k -exec ls -lh {} \; 2>/dev/null | head -20
+          echo "── Liste des OIDs LFS dans tout l'historique ──"
+          git lfs ls-files --all --long 2>&1 | head -50
 
-      - name: Upload LFS blobs to Drive
+          echo ""
+          echo "── Fetch tous les blobs LFS ──"
+          git lfs fetch --all 2>&1 | tail -5
+
+          echo ""
+          echo "── Checkout (matérialise les fichiers) ──"
+          git lfs checkout 2>&1 | tail -5
+
+          echo ""
+          echo "── Fichiers récupérés ──"
+          find . -name "*.pkl" -size +1k -exec ls -lh {} \; 2>/dev/null | head -30
+
+      - name: Restore old commits .pkl
+        run: |
+          cd /tmp/cache-repo
+          export GIT_LFS_SKIP_SMUDGE=0
+
+          echo "── Extraction des .pkl depuis les anciens commits ──"
+          mkdir -p /tmp/restored
+
+          for PATH in \
+            "cache/historical.pkl" \
+            "cache/stages/features.pkl" \
+            "cache/stages/metadata.pkl" \
+            "cache/stages/models/ml_XGB.pkl" \
+            "cache/stages/models/ml_LGBM.pkl" \
+            "cache/stages/models/ml_CatBoost.pkl" \
+            "cache/stages/models/ml_RF.pkl" \
+            "cache/stages/models/ml_DL.pkl" \
+            "cache/stages/models/pb_PoissonGoalsModel.pkl" \
+            "cache/stages/models/pb_DixonColesGoalModel.pkl" \
+            "cache/stages/models/pb_BivariatePoissonGoalModel.pkl" \
+            "cache/stages/models/pb_NegativeBinomialGoalModel.pkl" \
+            "cache/stages/models/pb_WeibullCopulaGoalsModel.pkl" \
+            "cache/stages/models/pb_ZeroInflatedPoissonGoalsModel.pkl"; do
+
+            echo "  Cherche : $PATH"
+            LAST_COMMIT=$(git log --all --format=%H -1 -- "$PATH" 2>/dev/null)
+            if [ -z "$LAST_COMMIT" ]; then
+              echo "    ⚠️  Aucun commit"
+              continue
+            fi
+
+            mkdir -p "/tmp/restored/$(dirname "$PATH")"
+            if git show "${LAST_COMMIT}:${PATH}" > "/tmp/restored/${PATH}" 2>/dev/null; then
+              SIZE=$(stat -c%s "/tmp/restored/${PATH}" 2>/dev/null)
+              HB=$(head -c 4 "/tmp/restored/${PATH}" 2>/dev/null)
+              if [ "$HB" = "vers" ] || [ "$SIZE" -lt 1000 ]; then
+                echo "    ⚠️  Pointeur ($SIZE bytes) — résolution via LFS..."
+                git cat-file -p "${LAST_COMMIT}:${PATH}" > /tmp/pointer.txt 2>/dev/null
+                OID=$(grep -oE 'sha256:[a-f0-9]+' /tmp/pointer.txt | cut -d: -f2 | head -1)
+                SZ_PTR=$(grep -oE 'size [0-9]+' /tmp/pointer.txt | awk '{print $2}' | head -1)
+                if [ -n "$OID" ]; then
+                  echo "    OID: $OID (size=$SZ_PTR)"
+                  echo "$OID" >> /tmp/oids.txt
+                fi
+              else
+                echo "    ✅ $SIZE bytes (OK)"
+              fi
+            else
+              echo "    ❌ Git show échoué"
+            fi
+          done
+
+      - name: Download LFS blobs via API
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ ! -f /tmp/oids.txt ]; then
+            echo "Pas d'OIDs à télécharger"
+            exit 0
+          fi
+
+          echo "── Téléchargement des blobs LFS par API ──"
+          OIDS=$(sort -u /tmp/oids.txt)
+
+          for OID in $OIDS; do
+            echo "  OID: $OID"
+            SIZE_HEADER=$(curl -sS -X POST \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.git-lfs+json" \
+              -H "Content-Type: application/vnd.git-lfs+json" \
+              -d "{\"operation\":\"download\",\"transfers\":[\"basic\"],\"objects\":[{\"oid\":\"${OID}\"}]}" \
+              "https://github.com/${{ github.repository }}.git/info/lfs/objects/batch" \
+              2>/dev/null)
+
+            HREF=$(echo "${SIZE_HEADER}" | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    for o in d.get('objects', []):
+        a = o.get('actions', {})
+        if 'download' in a:
+            print(a['download']['href'])
+            break
+except: pass
+" 2>/dev/null)
+
+            if [ -n "$HREF" ]; then
+              echo "    ✅ URL obtenue"
+              echo "$OID|$HREF" >> /tmp/download_urls.txt
+            else
+              echo "    ❌ Pas d'URL"
+            fi
+          done
+
+      - name: Upload restored cache to Drive
         env:
           RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
         run: |
           echo "${RCLONE_CONFIG}" | base64 -d > /tmp/rclone.conf
           chmod 600 /tmp/rclone.conf
 
-          cd /tmp/cache-auto
-
-          echo "── Upload cache complet vers Drive ──"
-          rclone --config /tmp/rclone.conf copy cache/ gdrive:GOANGEL/cache/ \
-            --transfers 8 --checkers 16 \
-            --exclude "*.tmp" --exclude "*.log" \
-            --stats-one-line --stats 10s 2>&1 | tail -5
+          echo "── Contenu restauré ──"
+          find /tmp/restored -name "*.pkl" -exec ls -lh {} \; 2>/dev/null
 
           echo ""
-          echo "── Vérification Drive ──"
+          echo "── Upload vers Drive ──"
+          if [ -d /tmp/restored/cache ]; then
+            rclone --config /tmp/rclone.conf copy /tmp/restored/cache/ gdrive:GOANGEL/cache/ \
+              --transfers 8 --checkers 16 \
+              --stats-one-line --stats 10s 2>&1 | tail -5
+          fi
+
+          echo ""
+          echo "── Taille Drive ──"
           rclone --config /tmp/rclone.conf size gdrive:GOANGEL/cache/
-          rclone --config /tmp/rclone.conf lsf gdrive:GOANGEL/cache/ | head -20
