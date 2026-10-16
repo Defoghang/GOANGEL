@@ -895,6 +895,10 @@ def _stage_train_ml_model(model_name: str) -> None:
                 stage_print(f"📦 {model_name} récupéré du checkpoint universel")
                 return
     payload = _stage_load_features()
+    _X_full = payload["X"]
+    stage_print(f"📊 {model_name} : dataset COMPLET chargé")
+    stage_print(f"   X.shape = {_X_full.shape} (TOUS les matchs)")
+    stage_print(f"   y.shape = {payload['y'].shape}")
     X = payload["X"]
     y = payload["y"]
     n = len(X)
@@ -1875,6 +1879,34 @@ def _stage_run(stage_name: str) -> int:
         return 0
 
     attempts = _read_attempts(stage_name)
+
+    # ─── Vérification préalable : environnement valide ? ───
+    # Si les fichiers critiques sont des pointeurs LFS ou absents,
+    # on ne consomme PAS d'attempt.
+    _env_ok = True
+    _env_reasons = []
+    for _f in (Path(CACHE_DIR) / "historical.pkl",
+               Path(CACHE_DIR) / "stages" / "features.pkl"):
+        if not _f.exists():
+            _env_ok = False
+            _env_reasons.append(f"absent: {_f.name}")
+            continue
+        try:
+            with open(_f, "rb") as _fh:
+                _magic = _fh.read(6)
+            if _magic.startswith(b"version https://git-lfs"):
+                _env_ok = False
+                _env_reasons.append(f"pointeur LFS: {_f.name}")
+        except OSError as _exc:
+            _env_ok = False
+            _env_reasons.append(f"lecture impossible: {_f.name}")
+
+    if not _env_ok:
+        print(f"{RED}❌ Environnement invalide — pas de tentative consommée{RESET}")
+        for _r in _env_reasons:
+            print(f"   - {_r}")
+        return 1
+
     current_attempt = _increment_attempts(stage_name)
     stage_print(f"{CYAN}▶️  STAGE : {stage_name} (attempt {current_attempt}/{_MAX_ATTEMPTS_DEFAULT}){RESET}")
 
