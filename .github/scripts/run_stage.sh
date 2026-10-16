@@ -7,6 +7,66 @@ if [ -z "${STAGE}" ]; then
 fi
 
 export GH_TOKEN="${GITHUB_TOKEN}"
+
+lfs_download_by_api() {
+  local FILE_PATH="$1"
+  local DEST_PATH="$2"
+  local POINTER_URL="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/cache-auto/${FILE_PATH}"
+
+  local POINTER_CONTENT
+  POINTER_CONTENT=$(curl -sS -H "Authorization: token ${GITHUB_TOKEN}" "${POINTER_URL}" 2>/dev/null)
+
+  local OID SIZE
+  OID=$(echo "${POINTER_CONTENT}" | grep -oE 'sha256:[a-f0-9]+' | cut -d: -f2 | head -1)
+  SIZE=$(echo "${POINTER_CONTENT}" | grep -oE 'size [0-9]+' | awk '{print $2}' | head -1)
+
+  if [ -z "${OID}" ] || [ -z "${SIZE}" ]; then
+    echo "    ⚠️  Pas un pointeur LFS : ${FILE_PATH}"
+    return 1
+  fi
+
+  local BATCH_RESPONSE
+  BATCH_RESPONSE=$(curl -sS -X POST \
+    -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+    -H "Accept: application/vnd.git-lfs+json" \
+    -H "Content-Type: application/vnd.git-lfs+json" \
+    -d "{\"operation\":\"download\",\"transfers\":[\"basic\"],\"objects\":[{\"oid\":\"${OID}\",\"size\":${SIZE}}]}" \
+    "https://github.com/${GITHUB_REPOSITORY}.git/info/lfs/objects/batch" 2>/dev/null)
+
+  local DOWNLOAD_URL
+  DOWNLOAD_URL=$(echo "${BATCH_RESPONSE}" | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    for o in d.get('objects', []):
+        actions = o.get('actions', {})
+        if 'download' in actions:
+            print(actions['download']['href'])
+            break
+except: pass
+" 2>/dev/null)
+
+  if [ -z "${DOWNLOAD_URL}" ]; then
+    echo "    ❌ Pas d'URL de download pour ${FILE_PATH}"
+    return 1
+  fi
+
+  mkdir -p "$(dirname "${DEST_PATH}")"
+  if curl -sS -L -o "${DEST_PATH}" "${DOWNLOAD_URL}" 2>/dev/null; then
+    local DL_SIZE
+    DL_SIZE=$(stat -c%s "${DEST_PATH}" 2>/dev/null || echo 0)
+    if [ "${DL_SIZE}" = "${SIZE}" ]; then
+      echo "    ✅ ${FILE_PATH} téléchargé (${DL_SIZE} bytes)"
+      return 0
+    else
+      echo "    ⚠️  Taille incorrecte : ${DL_SIZE} vs ${SIZE}"
+      return 1
+    fi
+  fi
+  return 1
+}
+
+
 export OMP_NUM_THREADS=2
 export OPENBLAS_NUM_THREADS=2
 export MKL_NUM_THREADS=2
@@ -60,8 +120,10 @@ ENVEOF
 mkdir -p cache
 if gh api "repos/${GITHUB_REPOSITORY}/branches/cache-auto" >/dev/null 2>&1; then
   echo "↻ Restauration cache-auto..."
+
+if gh api "repos/${GITHUB_REPOSITORY}/branches/cache-auto" >/dev/null 2>&1; then
   rm -rf /tmp/ckpt_restore
-  export GIT_LFS_SKIP_SMUDGE=0
+  export GIT_LFS_SKIP_SMUDGE=1
 
   git lfs install --local 2>&1 | tail -1
 
@@ -72,13 +134,19 @@ if gh api "repos/${GITHUB_REPOSITORY}/branches/cache-auto" >/dev/null 2>&1; then
   if [ -d /tmp/ckpt_restore ]; then
     cd /tmp/ckpt_restore
 
+    git remote set-url origin \
+      "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
     git lfs install --local 2>&1 | tail -1
 
-    echo "  📥 git lfs pull origin cache-auto..."
-    git lfs pull origin cache-auto 2>&1 | tail -3 || true
+    echo "  📥 git lfs fetch --all..."
+    git lfs fetch --all 2>&1 | tail -3 || true
 
-    echo "  🔄 Restauration forcée des fichiers..."
-    git checkout cache-auto -- . 2>&1 | tail -2 || true
+    echo "  📥 git lfs checkout..."
+    git lfs checkout 2>&1 | tail -3 || true
+
+    echo "  📥 git lfs pull (sans ref)..."
+    git lfs pull 2>&1 | tail -3 || true
 
     echo "  🔍 Vérification pointeurs LFS..."
     LFS_POINTER=0
@@ -96,17 +164,31 @@ if gh api "repos/${GITHUB_REPOSITORY}/branches/cache-auto" >/dev/null 2>&1; then
     done
 
     if [ "$LFS_POINTER" = "1" ]; then
-      echo "  ⚠️  Pointeurs restants — tentative par OID direct..."
-      for f in cache/historical.pkl cache/stages/features.pkl; do
-        if [ -f "$f" ]; then
-          OID=$(head -2 "$f" | grep -oE 'sha256:[a-f0-9]+' | cut -d: -f2)
-          if [ -n "$OID" ]; then
-            echo "     OID de $f : $OID"
-            git lfs fetch origin "$OID" 2>&1 | tail -1 || true
+      echo "  ⚠️  Fallback : réécriture du clone avec LFS activé..."
+      cd /tmp
+      rm -rf /tmp/ckpt_restore2
+      export GIT_LFS_SKIP_SMUDGE=0
+      git clone --branch cache-auto \
+        "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+        /tmp/ckpt_restore2 2>&1 | tail -5 || true
+
+      if [ -d /tmp/ckpt_restore2/cache ]; then
+        rm -rf /tmp/ckpt_restore
+        mv /tmp/ckpt_restore2 /tmp/ckpt_restore
+        cd /tmp/ckpt_restore
+
+        for f in cache/historical.pkl cache/stages/features.pkl; do
+          if [ -f "$f" ]; then
+            SIZE=$(stat -c%s "$f" 2>/dev/null || echo 0)
+            HEAD_BYTES=$(head -c 4 "$f" 2>/dev/null || echo "")
+            if [ "$HEAD_BYTES" = "vers" ] || [ "$SIZE" -lt 1000 ]; then
+              echo "  ❌ ENCORE POINTEUR : $f ($SIZE bytes)"
+            else
+              echo "  ✅ Fichier réel (fallback) : $f ($SIZE bytes)"
+            fi
           fi
-        fi
-      done
-      git lfs checkout 2>&1 | tail -2 || true
+        done
+      fi
     fi
 
     cd "${GITHUB_WORKSPACE}"
@@ -124,15 +206,6 @@ if gh api "repos/${GITHUB_REPOSITORY}/branches/cache-auto" >/dev/null 2>&1; then
   fi
 fi
 
-# ─── Audit pipeline (fuites & sauts de matchs) ───
-if [ -f "audit_pipeline.py" ] && [ -f "cache/stages/features.pkl" ]; then
-  echo ""
-  echo "═══════════════════════════════════════════════════════════"
-  echo "  AUDIT PIPELINE (fuites & sauts)"
-  echo "═══════════════════════════════════════════════════════════"
-  python3 -u audit_pipeline.py 2>&1 | tee -a audit.log || true
-  echo ""
-fi
 
 if [ -f "cache/stages/done/${STAGE}.done" ]; then
   echo "✅ Stage ${STAGE} déjà terminé (marqueur .done présent) — skip"

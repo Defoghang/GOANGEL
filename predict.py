@@ -193,10 +193,68 @@ def _atomic_read_pickle(path: Path) -> Any:
         magic = f.read(6)
 
     if magic.startswith(b"version https://git-lfs"):
-        raise RuntimeError(
-            f"❌ {path} est un POINTEUR LFS, pas le vrai fichier. "
-            f"Exécuter 'git lfs pull' avant. Taille : {path.stat().st_size} bytes"
-        )
+        import os
+        import subprocess
+        token = os.environ.get("GH_PAT") or os.environ.get("GITHUB_TOKEN") or ""
+        repo = os.environ.get("GITHUB_REPOSITORY", "")
+        if token and repo:
+            try:
+                with open(path, "r", encoding="utf-8") as _f:
+                    _pointer = _f.read()
+                _oid = None
+                _size = None
+                for _line in _pointer.splitlines():
+                    if _line.startswith("oid sha256:"):
+                        _oid = _line.split(":", 1)[1].strip()
+                    elif _line.startswith("size "):
+                        _size = int(_line.split()[1])
+                if _oid and _size:
+                    import json as _json
+                    import urllib.request as _ur
+                    _batch_url = f"https://github.com/{repo}.git/info/lfs/objects/batch"
+                    _payload = _json.dumps({
+                        "operation": "download",
+                        "transfers": ["basic"],
+                        "objects": [{"oid": _oid, "size": _size}],
+                    }).encode()
+                    _req = _ur.Request(
+                        _batch_url, data=_payload, method="POST",
+                        headers={
+                            "Authorization": f"Bearer {token}",
+                            "Accept": "application/vnd.git-lfs+json",
+                            "Content-Type": "application/vnd.git-lfs+json",
+                        },
+                    )
+                    with _ur.urlopen(_req, timeout=60) as _resp:
+                        _data = _json.loads(_resp.read())
+                    _href = None
+                    for _o in _data.get("objects", []):
+                        _dl = _o.get("actions", {}).get("download", {})
+                        if "href" in _dl:
+                            _href = _dl["href"]
+                            break
+                    if _href:
+                        _req2 = _ur.Request(_href)
+                        with _ur.urlopen(_req2, timeout=300) as _resp2:
+                            _blob = _resp2.read()
+                        if len(_blob) == _size:
+                            with open(path, "wb") as _f:
+                                _f.write(_blob)
+                            logger.info(
+                                "✅ %s : téléchargé via API LFS (%d bytes)",
+                                path.name, _size,
+                            )
+                            with open(path, "rb") as _f:
+                                magic = _f.read(6)
+            except Exception as _exc:
+                logger.warning("Download LFS auto échoué pour %s : %s", path.name, _exc)
+
+        if magic.startswith(b"version https://git-lfs"):
+            raise RuntimeError(
+                f"❌ {path} est un POINTEUR LFS, pas le vrai fichier. "
+                f"Taille : {path.stat().st_size} bytes. "
+                f"Auto-download échoué."
+            )
 
     if magic[:6] == b"\xfd7zXZ\x00":
         import lzma
