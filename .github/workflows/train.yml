@@ -44,8 +44,7 @@ jobs:
     needs: prepare
     if: |
       always() && !cancelled() &&
-      needs.prepare.result != 'failure' &&
-      needs.prepare.result != 'cancelled' &&
+      needs.prepare.result == 'success' &&
       (inputs.force_stage == '' || inputs.force_stage == 'refresh')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -64,8 +63,7 @@ jobs:
     needs: refresh
     if: |
       always() && !cancelled() &&
-      needs.refresh.result != 'failure' &&
-      needs.refresh.result != 'cancelled' &&
+      needs.refresh.result == 'success' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_xgb')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -84,8 +82,7 @@ jobs:
     needs: train_xgb
     if: |
       always() && !cancelled() &&
-      needs.train_xgb.result != 'failure' &&
-      needs.train_xgb.result != 'cancelled' &&
+      needs.train_xgb.result == 'success' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_lgbm')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -104,8 +101,7 @@ jobs:
     needs: train_lgbm
     if: |
       always() && !cancelled() &&
-      needs.train_lgbm.result != 'failure' &&
-      needs.train_lgbm.result != 'cancelled' &&
+      needs.train_lgbm.result == 'success' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_catboost')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -124,8 +120,7 @@ jobs:
     needs: train_catboost
     if: |
       always() && !cancelled() &&
-      needs.train_catboost.result != 'failure' &&
-      needs.train_catboost.result != 'cancelled' &&
+      needs.train_catboost.result == 'success' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_rf')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -144,8 +139,7 @@ jobs:
     needs: train_rf
     if: |
       always() && !cancelled() &&
-      needs.train_rf.result != 'failure' &&
-      needs.train_rf.result != 'cancelled' &&
+      needs.train_rf.result == 'success' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_dl')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -164,8 +158,7 @@ jobs:
     needs: train_dl
     if: |
       always() && !cancelled() &&
-      needs.train_dl.result != 'failure' &&
-      needs.train_dl.result != 'cancelled' &&
+      needs.train_dl.result == 'success' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_pb_poisson')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -184,8 +177,7 @@ jobs:
     needs: train_pb_poisson
     if: |
       always() && !cancelled() &&
-      needs.train_pb_poisson.result != 'failure' &&
-      needs.train_pb_poisson.result != 'cancelled' &&
+      needs.train_pb_poisson.result == 'success' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_pb_dixon_coles')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -204,8 +196,7 @@ jobs:
     needs: train_pb_dixon_coles
     if: |
       always() && !cancelled() &&
-      needs.train_pb_dixon_coles.result != 'failure' &&
-      needs.train_pb_dixon_coles.result != 'cancelled' &&
+      needs.train_pb_dixon_coles.result == 'success' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_pb_bivariate')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -224,8 +215,7 @@ jobs:
     needs: train_pb_bivariate
     if: |
       always() && !cancelled() &&
-      needs.train_pb_bivariate.result != 'failure' &&
-      needs.train_pb_bivariate.result != 'cancelled' &&
+      needs.train_pb_bivariate.result == 'success' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_pb_negbinomial')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -244,8 +234,7 @@ jobs:
     needs: train_pb_negbinomial
     if: |
       always() && !cancelled() &&
-      needs.train_pb_negbinomial.result != 'failure' &&
-      needs.train_pb_negbinomial.result != 'cancelled' &&
+      needs.train_pb_negbinomial.result == 'success' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_pb_zeroinflated')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -264,8 +253,7 @@ jobs:
     needs: train_pb_zeroinflated
     if: |
       always() && !cancelled() &&
-      needs.train_pb_zeroinflated.result != 'failure' &&
-      needs.train_pb_zeroinflated.result != 'cancelled' &&
+      needs.train_pb_zeroinflated.result == 'success' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_pb_weibull')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -284,8 +272,7 @@ jobs:
     needs: train_pb_weibull
     if: |
       always() && !cancelled() &&
-      needs.train_pb_weibull.result != 'failure' &&
-      needs.train_pb_weibull.result != 'cancelled' &&
+      needs.train_pb_weibull.result == 'success' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_pb_bayesian')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -304,8 +291,7 @@ jobs:
     needs: train_pb_bayesian
     if: |
       always() && !cancelled() &&
-      needs.train_pb_bayesian.result != 'failure' &&
-      needs.train_pb_bayesian.result != 'cancelled' &&
+      needs.train_pb_bayesian.result == 'success' &&
       (inputs.force_stage == '' || inputs.force_stage == 'train_pb_hierarchical')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -324,8 +310,7 @@ jobs:
     needs: train_pb_hierarchical
     if: |
       always() && !cancelled() &&
-      needs.train_pb_hierarchical.result != 'failure' &&
-      needs.train_pb_hierarchical.result != 'cancelled' &&
+      needs.train_pb_hierarchical.result == 'success' &&
       (inputs.force_stage == '' || inputs.force_stage == 'finalize_prep')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -344,8 +329,7 @@ jobs:
     needs: finalize_prep
     if: |
       always() && !cancelled() &&
-      needs.finalize_prep.result != 'failure' &&
-      needs.finalize_prep.result != 'cancelled' &&
+      needs.finalize_prep.result == 'success' &&
       (inputs.force_stage == '' || inputs.force_stage == 'finalize_xgb')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -364,8 +348,7 @@ jobs:
     needs: finalize_xgb
     if: |
       always() && !cancelled() &&
-      needs.finalize_xgb.result != 'failure' &&
-      needs.finalize_xgb.result != 'cancelled' &&
+      needs.finalize_xgb.result == 'success' &&
       (inputs.force_stage == '' || inputs.force_stage == 'finalize_lgbm')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -384,8 +367,7 @@ jobs:
     needs: finalize_lgbm
     if: |
       always() && !cancelled() &&
-      needs.finalize_lgbm.result != 'failure' &&
-      needs.finalize_lgbm.result != 'cancelled' &&
+      needs.finalize_lgbm.result == 'success' &&
       (inputs.force_stage == '' || inputs.force_stage == 'finalize_catboost')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -404,8 +386,7 @@ jobs:
     needs: finalize_catboost
     if: |
       always() && !cancelled() &&
-      needs.finalize_catboost.result != 'failure' &&
-      needs.finalize_catboost.result != 'cancelled' &&
+      needs.finalize_catboost.result == 'success' &&
       (inputs.force_stage == '' || inputs.force_stage == 'finalize_rf')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -424,8 +405,7 @@ jobs:
     needs: finalize_rf
     if: |
       always() && !cancelled() &&
-      needs.finalize_rf.result != 'failure' &&
-      needs.finalize_rf.result != 'cancelled' &&
+      needs.finalize_rf.result == 'success' &&
       (inputs.force_stage == '' || inputs.force_stage == 'finalize_dl')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -444,7 +424,8 @@ jobs:
     needs: finalize_dl
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson')
+      needs.finalize_dl.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson__att01')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_poisson
@@ -462,7 +443,8 @@ jobs:
     needs: finalize_pb_poisson__att01
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson')
+      needs.finalize_pb_poisson__att01.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson__att02')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_poisson
@@ -480,7 +462,8 @@ jobs:
     needs: finalize_pb_poisson__att02
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson')
+      needs.finalize_pb_poisson__att02.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson__att03')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_poisson
@@ -498,7 +481,8 @@ jobs:
     needs: finalize_pb_poisson__att03
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson')
+      needs.finalize_pb_poisson__att03.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson__att04')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_poisson
@@ -516,7 +500,8 @@ jobs:
     needs: finalize_pb_poisson__att04
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson')
+      needs.finalize_pb_poisson__att04.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson__att05')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_poisson
@@ -534,7 +519,8 @@ jobs:
     needs: finalize_pb_poisson__att05
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson')
+      needs.finalize_pb_poisson__att05.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson__att06')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_poisson
@@ -552,7 +538,8 @@ jobs:
     needs: finalize_pb_poisson__att06
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson')
+      needs.finalize_pb_poisson__att06.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson__att07')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_poisson
@@ -570,7 +557,8 @@ jobs:
     needs: finalize_pb_poisson__att07
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson')
+      needs.finalize_pb_poisson__att07.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson__att08')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_poisson
@@ -588,7 +576,8 @@ jobs:
     needs: finalize_pb_poisson__att08
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson')
+      needs.finalize_pb_poisson__att08.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson__att09')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_poisson
@@ -606,7 +595,8 @@ jobs:
     needs: finalize_pb_poisson__att09
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson')
+      needs.finalize_pb_poisson__att09.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson__att10')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_poisson
@@ -624,7 +614,8 @@ jobs:
     needs: finalize_pb_poisson__att10
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson')
+      needs.finalize_pb_poisson__att10.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson__att11')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_poisson
@@ -642,7 +633,8 @@ jobs:
     needs: finalize_pb_poisson__att11
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson')
+      needs.finalize_pb_poisson__att11.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson__att12')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_poisson
@@ -660,7 +652,8 @@ jobs:
     needs: finalize_pb_poisson__att12
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson')
+      needs.finalize_pb_poisson__att12.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson__att13')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_poisson
@@ -678,7 +671,8 @@ jobs:
     needs: finalize_pb_poisson__att13
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson')
+      needs.finalize_pb_poisson__att13.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson__att14')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_poisson
@@ -696,7 +690,8 @@ jobs:
     needs: finalize_pb_poisson__att14
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson')
+      needs.finalize_pb_poisson__att14.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_poisson__att15')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_poisson
@@ -714,7 +709,8 @@ jobs:
     needs: finalize_pb_poisson__att15
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles')
+      needs.finalize_pb_poisson__att15.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles__att01')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_dixon_coles
@@ -732,7 +728,8 @@ jobs:
     needs: finalize_pb_dixon_coles__att01
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles')
+      needs.finalize_pb_dixon_coles__att01.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles__att02')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_dixon_coles
@@ -750,7 +747,8 @@ jobs:
     needs: finalize_pb_dixon_coles__att02
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles')
+      needs.finalize_pb_dixon_coles__att02.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles__att03')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_dixon_coles
@@ -768,7 +766,8 @@ jobs:
     needs: finalize_pb_dixon_coles__att03
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles')
+      needs.finalize_pb_dixon_coles__att03.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles__att04')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_dixon_coles
@@ -786,7 +785,8 @@ jobs:
     needs: finalize_pb_dixon_coles__att04
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles')
+      needs.finalize_pb_dixon_coles__att04.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles__att05')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_dixon_coles
@@ -804,7 +804,8 @@ jobs:
     needs: finalize_pb_dixon_coles__att05
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles')
+      needs.finalize_pb_dixon_coles__att05.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles__att06')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_dixon_coles
@@ -822,7 +823,8 @@ jobs:
     needs: finalize_pb_dixon_coles__att06
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles')
+      needs.finalize_pb_dixon_coles__att06.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles__att07')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_dixon_coles
@@ -840,7 +842,8 @@ jobs:
     needs: finalize_pb_dixon_coles__att07
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles')
+      needs.finalize_pb_dixon_coles__att07.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles__att08')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_dixon_coles
@@ -858,7 +861,8 @@ jobs:
     needs: finalize_pb_dixon_coles__att08
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles')
+      needs.finalize_pb_dixon_coles__att08.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles__att09')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_dixon_coles
@@ -876,7 +880,8 @@ jobs:
     needs: finalize_pb_dixon_coles__att09
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles')
+      needs.finalize_pb_dixon_coles__att09.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles__att10')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_dixon_coles
@@ -894,7 +899,8 @@ jobs:
     needs: finalize_pb_dixon_coles__att10
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles')
+      needs.finalize_pb_dixon_coles__att10.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles__att11')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_dixon_coles
@@ -912,7 +918,8 @@ jobs:
     needs: finalize_pb_dixon_coles__att11
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles')
+      needs.finalize_pb_dixon_coles__att11.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles__att12')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_dixon_coles
@@ -930,7 +937,8 @@ jobs:
     needs: finalize_pb_dixon_coles__att12
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles')
+      needs.finalize_pb_dixon_coles__att12.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles__att13')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_dixon_coles
@@ -948,7 +956,8 @@ jobs:
     needs: finalize_pb_dixon_coles__att13
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles')
+      needs.finalize_pb_dixon_coles__att13.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles__att14')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_dixon_coles
@@ -966,7 +975,8 @@ jobs:
     needs: finalize_pb_dixon_coles__att14
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles')
+      needs.finalize_pb_dixon_coles__att14.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_dixon_coles__att15')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_dixon_coles
@@ -984,7 +994,8 @@ jobs:
     needs: finalize_pb_dixon_coles__att15
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate')
+      needs.finalize_pb_dixon_coles__att15.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate__att01')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bivariate
@@ -1002,7 +1013,8 @@ jobs:
     needs: finalize_pb_bivariate__att01
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate')
+      needs.finalize_pb_bivariate__att01.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate__att02')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bivariate
@@ -1020,7 +1032,8 @@ jobs:
     needs: finalize_pb_bivariate__att02
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate')
+      needs.finalize_pb_bivariate__att02.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate__att03')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bivariate
@@ -1038,7 +1051,8 @@ jobs:
     needs: finalize_pb_bivariate__att03
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate')
+      needs.finalize_pb_bivariate__att03.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate__att04')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bivariate
@@ -1056,7 +1070,8 @@ jobs:
     needs: finalize_pb_bivariate__att04
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate')
+      needs.finalize_pb_bivariate__att04.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate__att05')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bivariate
@@ -1074,7 +1089,8 @@ jobs:
     needs: finalize_pb_bivariate__att05
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate')
+      needs.finalize_pb_bivariate__att05.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate__att06')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bivariate
@@ -1092,7 +1108,8 @@ jobs:
     needs: finalize_pb_bivariate__att06
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate')
+      needs.finalize_pb_bivariate__att06.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate__att07')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bivariate
@@ -1110,7 +1127,8 @@ jobs:
     needs: finalize_pb_bivariate__att07
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate')
+      needs.finalize_pb_bivariate__att07.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate__att08')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bivariate
@@ -1128,7 +1146,8 @@ jobs:
     needs: finalize_pb_bivariate__att08
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate')
+      needs.finalize_pb_bivariate__att08.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate__att09')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bivariate
@@ -1146,7 +1165,8 @@ jobs:
     needs: finalize_pb_bivariate__att09
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate')
+      needs.finalize_pb_bivariate__att09.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate__att10')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bivariate
@@ -1164,7 +1184,8 @@ jobs:
     needs: finalize_pb_bivariate__att10
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate')
+      needs.finalize_pb_bivariate__att10.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate__att11')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bivariate
@@ -1182,7 +1203,8 @@ jobs:
     needs: finalize_pb_bivariate__att11
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate')
+      needs.finalize_pb_bivariate__att11.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate__att12')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bivariate
@@ -1200,7 +1222,8 @@ jobs:
     needs: finalize_pb_bivariate__att12
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate')
+      needs.finalize_pb_bivariate__att12.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate__att13')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bivariate
@@ -1218,7 +1241,8 @@ jobs:
     needs: finalize_pb_bivariate__att13
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate')
+      needs.finalize_pb_bivariate__att13.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate__att14')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bivariate
@@ -1236,7 +1260,8 @@ jobs:
     needs: finalize_pb_bivariate__att14
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate')
+      needs.finalize_pb_bivariate__att14.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bivariate__att15')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bivariate
@@ -1254,7 +1279,8 @@ jobs:
     needs: finalize_pb_bivariate__att15
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial')
+      needs.finalize_pb_bivariate__att15.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial__att01')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_negbinomial
@@ -1272,7 +1298,8 @@ jobs:
     needs: finalize_pb_negbinomial__att01
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial')
+      needs.finalize_pb_negbinomial__att01.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial__att02')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_negbinomial
@@ -1290,7 +1317,8 @@ jobs:
     needs: finalize_pb_negbinomial__att02
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial')
+      needs.finalize_pb_negbinomial__att02.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial__att03')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_negbinomial
@@ -1308,7 +1336,8 @@ jobs:
     needs: finalize_pb_negbinomial__att03
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial')
+      needs.finalize_pb_negbinomial__att03.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial__att04')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_negbinomial
@@ -1326,7 +1355,8 @@ jobs:
     needs: finalize_pb_negbinomial__att04
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial')
+      needs.finalize_pb_negbinomial__att04.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial__att05')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_negbinomial
@@ -1344,7 +1374,8 @@ jobs:
     needs: finalize_pb_negbinomial__att05
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial')
+      needs.finalize_pb_negbinomial__att05.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial__att06')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_negbinomial
@@ -1362,7 +1393,8 @@ jobs:
     needs: finalize_pb_negbinomial__att06
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial')
+      needs.finalize_pb_negbinomial__att06.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial__att07')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_negbinomial
@@ -1380,7 +1412,8 @@ jobs:
     needs: finalize_pb_negbinomial__att07
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial')
+      needs.finalize_pb_negbinomial__att07.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial__att08')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_negbinomial
@@ -1398,7 +1431,8 @@ jobs:
     needs: finalize_pb_negbinomial__att08
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial')
+      needs.finalize_pb_negbinomial__att08.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial__att09')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_negbinomial
@@ -1416,7 +1450,8 @@ jobs:
     needs: finalize_pb_negbinomial__att09
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial')
+      needs.finalize_pb_negbinomial__att09.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial__att10')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_negbinomial
@@ -1434,7 +1469,8 @@ jobs:
     needs: finalize_pb_negbinomial__att10
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial')
+      needs.finalize_pb_negbinomial__att10.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial__att11')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_negbinomial
@@ -1452,7 +1488,8 @@ jobs:
     needs: finalize_pb_negbinomial__att11
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial')
+      needs.finalize_pb_negbinomial__att11.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial__att12')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_negbinomial
@@ -1470,7 +1507,8 @@ jobs:
     needs: finalize_pb_negbinomial__att12
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial')
+      needs.finalize_pb_negbinomial__att12.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial__att13')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_negbinomial
@@ -1488,7 +1526,8 @@ jobs:
     needs: finalize_pb_negbinomial__att13
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial')
+      needs.finalize_pb_negbinomial__att13.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial__att14')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_negbinomial
@@ -1506,7 +1545,8 @@ jobs:
     needs: finalize_pb_negbinomial__att14
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial')
+      needs.finalize_pb_negbinomial__att14.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_negbinomial__att15')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_negbinomial
@@ -1524,7 +1564,8 @@ jobs:
     needs: finalize_pb_negbinomial__att15
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated')
+      needs.finalize_pb_negbinomial__att15.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated__att01')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_zeroinflated
@@ -1542,7 +1583,8 @@ jobs:
     needs: finalize_pb_zeroinflated__att01
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated')
+      needs.finalize_pb_zeroinflated__att01.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated__att02')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_zeroinflated
@@ -1560,7 +1602,8 @@ jobs:
     needs: finalize_pb_zeroinflated__att02
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated')
+      needs.finalize_pb_zeroinflated__att02.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated__att03')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_zeroinflated
@@ -1578,7 +1621,8 @@ jobs:
     needs: finalize_pb_zeroinflated__att03
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated')
+      needs.finalize_pb_zeroinflated__att03.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated__att04')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_zeroinflated
@@ -1596,7 +1640,8 @@ jobs:
     needs: finalize_pb_zeroinflated__att04
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated')
+      needs.finalize_pb_zeroinflated__att04.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated__att05')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_zeroinflated
@@ -1614,7 +1659,8 @@ jobs:
     needs: finalize_pb_zeroinflated__att05
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated')
+      needs.finalize_pb_zeroinflated__att05.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated__att06')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_zeroinflated
@@ -1632,7 +1678,8 @@ jobs:
     needs: finalize_pb_zeroinflated__att06
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated')
+      needs.finalize_pb_zeroinflated__att06.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated__att07')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_zeroinflated
@@ -1650,7 +1697,8 @@ jobs:
     needs: finalize_pb_zeroinflated__att07
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated')
+      needs.finalize_pb_zeroinflated__att07.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated__att08')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_zeroinflated
@@ -1668,7 +1716,8 @@ jobs:
     needs: finalize_pb_zeroinflated__att08
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated')
+      needs.finalize_pb_zeroinflated__att08.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated__att09')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_zeroinflated
@@ -1686,7 +1735,8 @@ jobs:
     needs: finalize_pb_zeroinflated__att09
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated')
+      needs.finalize_pb_zeroinflated__att09.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated__att10')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_zeroinflated
@@ -1704,7 +1754,8 @@ jobs:
     needs: finalize_pb_zeroinflated__att10
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated')
+      needs.finalize_pb_zeroinflated__att10.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated__att11')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_zeroinflated
@@ -1722,7 +1773,8 @@ jobs:
     needs: finalize_pb_zeroinflated__att11
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated')
+      needs.finalize_pb_zeroinflated__att11.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated__att12')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_zeroinflated
@@ -1740,7 +1792,8 @@ jobs:
     needs: finalize_pb_zeroinflated__att12
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated')
+      needs.finalize_pb_zeroinflated__att12.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated__att13')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_zeroinflated
@@ -1758,7 +1811,8 @@ jobs:
     needs: finalize_pb_zeroinflated__att13
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated')
+      needs.finalize_pb_zeroinflated__att13.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated__att14')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_zeroinflated
@@ -1776,7 +1830,8 @@ jobs:
     needs: finalize_pb_zeroinflated__att14
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated')
+      needs.finalize_pb_zeroinflated__att14.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_zeroinflated__att15')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_zeroinflated
@@ -1794,7 +1849,8 @@ jobs:
     needs: finalize_pb_zeroinflated__att15
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull')
+      needs.finalize_pb_zeroinflated__att15.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull__att01')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_weibull
@@ -1812,7 +1868,8 @@ jobs:
     needs: finalize_pb_weibull__att01
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull')
+      needs.finalize_pb_weibull__att01.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull__att02')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_weibull
@@ -1830,7 +1887,8 @@ jobs:
     needs: finalize_pb_weibull__att02
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull')
+      needs.finalize_pb_weibull__att02.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull__att03')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_weibull
@@ -1848,7 +1906,8 @@ jobs:
     needs: finalize_pb_weibull__att03
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull')
+      needs.finalize_pb_weibull__att03.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull__att04')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_weibull
@@ -1866,7 +1925,8 @@ jobs:
     needs: finalize_pb_weibull__att04
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull')
+      needs.finalize_pb_weibull__att04.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull__att05')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_weibull
@@ -1884,7 +1944,8 @@ jobs:
     needs: finalize_pb_weibull__att05
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull')
+      needs.finalize_pb_weibull__att05.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull__att06')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_weibull
@@ -1902,7 +1963,8 @@ jobs:
     needs: finalize_pb_weibull__att06
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull')
+      needs.finalize_pb_weibull__att06.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull__att07')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_weibull
@@ -1920,7 +1982,8 @@ jobs:
     needs: finalize_pb_weibull__att07
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull')
+      needs.finalize_pb_weibull__att07.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull__att08')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_weibull
@@ -1938,7 +2001,8 @@ jobs:
     needs: finalize_pb_weibull__att08
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull')
+      needs.finalize_pb_weibull__att08.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull__att09')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_weibull
@@ -1956,7 +2020,8 @@ jobs:
     needs: finalize_pb_weibull__att09
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull')
+      needs.finalize_pb_weibull__att09.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull__att10')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_weibull
@@ -1974,7 +2039,8 @@ jobs:
     needs: finalize_pb_weibull__att10
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull')
+      needs.finalize_pb_weibull__att10.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull__att11')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_weibull
@@ -1992,7 +2058,8 @@ jobs:
     needs: finalize_pb_weibull__att11
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull')
+      needs.finalize_pb_weibull__att11.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull__att12')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_weibull
@@ -2010,7 +2077,8 @@ jobs:
     needs: finalize_pb_weibull__att12
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull')
+      needs.finalize_pb_weibull__att12.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull__att13')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_weibull
@@ -2028,7 +2096,8 @@ jobs:
     needs: finalize_pb_weibull__att13
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull')
+      needs.finalize_pb_weibull__att13.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull__att14')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_weibull
@@ -2046,7 +2115,8 @@ jobs:
     needs: finalize_pb_weibull__att14
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull')
+      needs.finalize_pb_weibull__att14.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_weibull__att15')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_weibull
@@ -2064,7 +2134,8 @@ jobs:
     needs: finalize_pb_weibull__att15
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian')
+      needs.finalize_pb_weibull__att15.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian__att01')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bayesian
@@ -2082,7 +2153,8 @@ jobs:
     needs: finalize_pb_bayesian__att01
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian')
+      needs.finalize_pb_bayesian__att01.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian__att02')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bayesian
@@ -2100,7 +2172,8 @@ jobs:
     needs: finalize_pb_bayesian__att02
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian')
+      needs.finalize_pb_bayesian__att02.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian__att03')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bayesian
@@ -2118,7 +2191,8 @@ jobs:
     needs: finalize_pb_bayesian__att03
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian')
+      needs.finalize_pb_bayesian__att03.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian__att04')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bayesian
@@ -2136,7 +2210,8 @@ jobs:
     needs: finalize_pb_bayesian__att04
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian')
+      needs.finalize_pb_bayesian__att04.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian__att05')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bayesian
@@ -2154,7 +2229,8 @@ jobs:
     needs: finalize_pb_bayesian__att05
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian')
+      needs.finalize_pb_bayesian__att05.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian__att06')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bayesian
@@ -2172,7 +2248,8 @@ jobs:
     needs: finalize_pb_bayesian__att06
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian')
+      needs.finalize_pb_bayesian__att06.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian__att07')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bayesian
@@ -2190,7 +2267,8 @@ jobs:
     needs: finalize_pb_bayesian__att07
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian')
+      needs.finalize_pb_bayesian__att07.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian__att08')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bayesian
@@ -2208,7 +2286,8 @@ jobs:
     needs: finalize_pb_bayesian__att08
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian')
+      needs.finalize_pb_bayesian__att08.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian__att09')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bayesian
@@ -2226,7 +2305,8 @@ jobs:
     needs: finalize_pb_bayesian__att09
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian')
+      needs.finalize_pb_bayesian__att09.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian__att10')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bayesian
@@ -2244,7 +2324,8 @@ jobs:
     needs: finalize_pb_bayesian__att10
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian')
+      needs.finalize_pb_bayesian__att10.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian__att11')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bayesian
@@ -2262,7 +2343,8 @@ jobs:
     needs: finalize_pb_bayesian__att11
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian')
+      needs.finalize_pb_bayesian__att11.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian__att12')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bayesian
@@ -2280,7 +2362,8 @@ jobs:
     needs: finalize_pb_bayesian__att12
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian')
+      needs.finalize_pb_bayesian__att12.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian__att13')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bayesian
@@ -2298,7 +2381,8 @@ jobs:
     needs: finalize_pb_bayesian__att13
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian')
+      needs.finalize_pb_bayesian__att13.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian__att14')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bayesian
@@ -2316,7 +2400,8 @@ jobs:
     needs: finalize_pb_bayesian__att14
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian')
+      needs.finalize_pb_bayesian__att14.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian__att15')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_bayesian
@@ -2334,7 +2419,8 @@ jobs:
     needs: finalize_pb_bayesian__att15
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical')
+      needs.finalize_pb_bayesian__att15.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical__att01')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_hierarchical
@@ -2352,7 +2438,8 @@ jobs:
     needs: finalize_pb_hierarchical__att01
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical')
+      needs.finalize_pb_hierarchical__att01.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical__att02')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_hierarchical
@@ -2370,7 +2457,8 @@ jobs:
     needs: finalize_pb_hierarchical__att02
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical')
+      needs.finalize_pb_hierarchical__att02.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical__att03')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_hierarchical
@@ -2388,7 +2476,8 @@ jobs:
     needs: finalize_pb_hierarchical__att03
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical')
+      needs.finalize_pb_hierarchical__att03.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical__att04')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_hierarchical
@@ -2406,7 +2495,8 @@ jobs:
     needs: finalize_pb_hierarchical__att04
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical')
+      needs.finalize_pb_hierarchical__att04.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical__att05')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_hierarchical
@@ -2424,7 +2514,8 @@ jobs:
     needs: finalize_pb_hierarchical__att05
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical')
+      needs.finalize_pb_hierarchical__att05.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical__att06')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_hierarchical
@@ -2442,7 +2533,8 @@ jobs:
     needs: finalize_pb_hierarchical__att06
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical')
+      needs.finalize_pb_hierarchical__att06.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical__att07')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_hierarchical
@@ -2460,7 +2552,8 @@ jobs:
     needs: finalize_pb_hierarchical__att07
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical')
+      needs.finalize_pb_hierarchical__att07.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical__att08')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_hierarchical
@@ -2478,7 +2571,8 @@ jobs:
     needs: finalize_pb_hierarchical__att08
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical')
+      needs.finalize_pb_hierarchical__att08.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical__att09')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_hierarchical
@@ -2496,7 +2590,8 @@ jobs:
     needs: finalize_pb_hierarchical__att09
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical')
+      needs.finalize_pb_hierarchical__att09.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical__att10')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_hierarchical
@@ -2514,7 +2609,8 @@ jobs:
     needs: finalize_pb_hierarchical__att10
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical')
+      needs.finalize_pb_hierarchical__att10.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical__att11')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_hierarchical
@@ -2532,7 +2628,8 @@ jobs:
     needs: finalize_pb_hierarchical__att11
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical')
+      needs.finalize_pb_hierarchical__att11.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical__att12')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_hierarchical
@@ -2550,7 +2647,8 @@ jobs:
     needs: finalize_pb_hierarchical__att12
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical')
+      needs.finalize_pb_hierarchical__att12.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical__att13')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_hierarchical
@@ -2568,7 +2666,8 @@ jobs:
     needs: finalize_pb_hierarchical__att13
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical')
+      needs.finalize_pb_hierarchical__att13.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical__att14')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_hierarchical
@@ -2586,7 +2685,8 @@ jobs:
     needs: finalize_pb_hierarchical__att14
     if: |
       always() && !cancelled() &&
-      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical')
+      needs.finalize_pb_hierarchical__att14.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical__att15')
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: finalize_pb_hierarchical
@@ -2604,8 +2704,7 @@ jobs:
     needs: finalize_pb_hierarchical__att15
     if: |
       always() && !cancelled() &&
-      needs.finalize_pb_hierarchical__att15.result != 'failure' &&
-      needs.finalize_pb_hierarchical__att15.result != 'cancelled' &&
+      needs.finalize_pb_hierarchical__att15.result == 'success' &&
       (inputs.force_stage == '' || inputs.force_stage == 'finalize_agg')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -2624,8 +2723,8 @@ jobs:
     needs: finalize_agg
     if: |
       always() && !cancelled() &&
-      inputs.force_stage == '' &&
-      needs.finalize_agg.result == 'success'
+      needs.finalize_agg.result == 'success' &&
+      (inputs.force_stage == '' || inputs.force_stage == 'release')
     uses: ./.github/workflows/release.yml
     with:
       version: ""

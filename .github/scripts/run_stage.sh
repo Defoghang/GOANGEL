@@ -126,6 +126,9 @@ git config user.email "actions@users.noreply.github.com"
 git config user.name "GOANGEL Auto"
 git checkout -B cache-auto
 
+# Exclure checkpoints (raw_matches.jsonl 64 MB > limite GitHub 50 MB)
+rm -rf cache/checkpoints 2>/dev/null || true
+
 # ── Git LFS : tracker les gros fichiers AVANT git add ──
 git lfs install --local --skip-repo
 git lfs track "*.pkl"
@@ -188,7 +191,18 @@ if [ "${RC}" = "0" ]; then
 fi
 
 if [ "${RC}" = "42" ]; then
-  echo "⏸️  PB INCOMPLET sur ${STAGE} (RC=42) — soft-retry nouvelle tentative"
+  ATTEMPTS_FILE="cache/stages/attempts/${STAGE}.json"
+  if [ -f "${ATTEMPTS_FILE}" ]; then
+    CUR=$(python3 -c "import json; print(json.load(open('${ATTEMPTS_FILE}')).get('count',0))" 2>/dev/null || echo 0)
+    if [ "${CUR}" -ge "${MAX_ATTEMPTS}" ]; then
+      echo "═══════════════════════════════════════════════════════════"
+      echo "  ❌ ${STAGE} : ${MAX_ATTEMPTS} tentatives épuisées — RC=42"
+      echo "  🛑 ARRÊT TOTAL — reset manuel requis"
+      echo "═══════════════════════════════════════════════════════════"
+      exit 3
+    fi
+  fi
+  echo "⏸️  PB INCOMPLET sur ${STAGE} (RC=42) — soft-retry tentative suivante"
   if [ -f ".github/scripts/pb_retry_check.sh" ]; then
     bash .github/scripts/pb_retry_check.sh "${STAGE}" "${MAX_ATTEMPTS}"
     RC_PB=$?
@@ -225,5 +239,14 @@ if [ "${RC}" = "124" ] || [ "${RC}" = "143" ]; then
   exit 1
 fi
 
-echo "❌ HARD FAILURE sur ${STAGE} (RC=${RC}) — ARRÊT DE LA CHAÎNE"
+if [ "${RC}" = "0" ]; then
+  echo "✅ Stage ${STAGE} terminé avec succès (RC=0)"
+  exit 0
+fi
+
+echo "═══════════════════════════════════════════════════════════"
+echo "  ❌ HARD FAILURE sur ${STAGE} (RC=${RC})"
+echo "  🛑 ARRÊT TOTAL DE LA CHAÎNE — aucune tentative supplémentaire"
+echo "  📋 Reset manuel des stages suivants requis"
+echo "═══════════════════════════════════════════════════════════"
 exit 1

@@ -1200,13 +1200,24 @@ def _finalize_ml_one(model_name: str) -> None:
     from sklearn.metrics import log_loss
 
     stage_print(f"🔧 FINALIZE ML — {model_name}")
+    if ck_has_step(ml_key(model_name), STEP_CALIBRATED):
+        ck = ck_load_step(ml_key(model_name), STEP_CALIBRATED)
+        if ck and ck.get("payload"):
+            stage_print(f"📦 {model_name} déjà finalisé (checkpoint)")
+            return
     ctx = load_context()
     if ctx is None:
         raise RuntimeError("Contexte finalize absent — lancer finalize_prep d'abord")
 
     model_path = MODELS_DIR / f"ml_{model_name}.pkl"
     if not model_path.exists():
-        raise RuntimeError(f"Modèle absent : {model_path}")
+        stage_print(f"⚠️  {model_name} : modèle absent — skip ce finalize")
+        save_partial(model_name, {
+            "model_key": model_name,
+            "skipped": True,
+            "reason": "model_missing",
+        })
+        return
 
     from predict import _atomic_read_pickle
     payload_m = _atomic_read_pickle(model_path)
@@ -1306,7 +1317,13 @@ def _finalize_pb_one(stage_name: str, class_name: str) -> None:
 
     model_path = MODELS_DIR / f"pb_{class_name}.pkl"
     if not model_path.exists():
-        raise RuntimeError(f"Modèle absent : {model_path}")
+        stage_print(f"⚠️  {class_name} : modèle absent — skip ce finalize")
+        save_partial(class_name, {
+            "model_key": class_name,
+            "skipped": True,
+            "reason": "model_missing",
+        })
+        return
 
     from predict import _atomic_read_pickle
     payload_pb = _atomic_read_pickle(model_path)
