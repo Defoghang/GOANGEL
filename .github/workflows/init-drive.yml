@@ -1,0 +1,49 @@
+name: Init Drive Upload
+
+on:
+  workflow_dispatch:
+
+jobs:
+  init:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install rclone
+        run: |
+          curl -sS https://rclone.org/install.sh | sudo bash >/dev/null 2>&1
+          rclone version | head -1
+
+      - name: Restore cache-auto (LFS)
+        run: |
+          export GIT_LFS_SKIP_SMUDGE=0
+          git lfs install --local >/dev/null 2>&1 || true
+          git clone --branch cache-auto \
+            "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" \
+            /tmp/cache-auto 2>&1 | tail -3
+          if [ -d /tmp/cache-auto/cache ]; then
+            mkdir -p cache
+            cp -r /tmp/cache-auto/cache/. cache/ 2>/dev/null || true
+          fi
+          echo "── Fichiers récupérés :"
+          find cache -name "*.pkl" -size +1k -exec ls -lh {} \; 2>/dev/null | head -20
+
+      - name: Upload to Drive
+        env:
+          RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
+        run: |
+          echo "${RCLONE_CONFIG}" | base64 -d > /tmp/rclone.conf
+          chmod 600 /tmp/rclone.conf
+          rclone --config /tmp/rclone.conf mkdir gdrive:GOANGEL 2>/dev/null || true
+          rclone --config /tmp/rclone.conf mkdir gdrive:GOANGEL/cache 2>/dev/null || true
+          rclone --config /tmp/rclone.conf sync cache/ gdrive:GOANGEL/cache/ \
+            --transfers 8 --checkers 16 \
+            --exclude "*.tmp" --exclude "*.log" \
+            --progress --stats-one-line 2>&1 | tail -10
+          echo ""
+          echo "── Contenu Drive :"
+          rclone --config /tmp/rclone.conf lsf gdrive:GOANGEL/cache/ --recursive | head -30
+          echo ""
+          echo "── Taille totale :"
+          rclone --config /tmp/rclone.conf size gdrive:GOANGEL/cache/
