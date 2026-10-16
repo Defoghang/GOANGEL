@@ -70,6 +70,10 @@ if ! command -v git-lfs &>/dev/null; then
 fi
 git lfs install --skip-repo >/dev/null 2>&1 || true
 
+if ! command -v rclone &>/dev/null; then
+  curl -sS https://rclone.org/install.sh | sudo bash >/dev/null 2>&1 || true
+fi
+
 pip install --upgrade pip -q
 pip install -q requests python-dotenv numpy pandas scipy scikit-learn
 pip install -q xgboost lightgbm catboost penaltyblog
@@ -173,6 +177,11 @@ if gh api "repos/${GITHUB_REPOSITORY}/branches/cache-auto" >/dev/null 2>&1; then
   fi
 fi
 
+if [ -f "gdrive_sync.py" ]; then
+  echo "☁️  Restauration cache depuis Google Drive..."
+  python3 gdrive_sync.py restore 2>&1 | tail -10 || true
+fi
+
 if [ -f "cache/stages/done/${STAGE}.done" ]; then
   echo "✅ Stage ${STAGE} déjà terminé (marqueur .done présent) — skip"
   exit 0
@@ -244,6 +253,11 @@ if [ "${PUSH_OK}" != "1" ]; then
   exit 5
 fi
 echo "✅ cache-auto pushé (stage=${STAGE})"
+
+if [ -f "gdrive_sync.py" ]; then
+  echo "☁️  Backup cache vers Google Drive..."
+  python3 gdrive_sync.py backup 2>&1 | tail -10 || true
+fi
 
 if [ "${RC}" = "0" ]; then
   echo "✅ Stage ${STAGE} terminé avec succès (RC=0)"

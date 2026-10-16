@@ -1,0 +1,97 @@
+name: GOANGEL Drive Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "restore | backup | status"
+        required: true
+        default: "status"
+        type: choice
+        options:
+          - status
+          - restore
+          - backup
+  schedule:
+    - cron: "0 3 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  drive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install rclone
+        run: |
+          curl -sS https://rclone.org/install.sh | sudo bash >/dev/null 2>&1
+          rclone version | head -1
+
+      - name: Restore cache-auto
+        run: |
+          git lfs install --local >/dev/null 2>&1 || true
+          git clone --depth 1 --branch cache-auto \
+            "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" \
+            /tmp/cache-auto 2>&1 | tail -2 || true
+          if [ -d /tmp/cache-auto/cache ]; then
+            mkdir -p cache
+            cp -r /tmp/cache-auto/cache/. cache/ 2>/dev/null || true
+          fi
+
+      - name: Run Drive action
+        env:
+          RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
+          RCLONE_REMOTE: gdrive
+          RCLONE_FOLDER: GOANGEL
+        run: |
+          ACTION="${{ inputs.action }}"
+          [ -z "${ACTION}" ] && ACTION="backup"
+          echo "── Action : ${ACTION} ──"
+          case "${ACTION}" in
+            status)  python3 gdrive_sync.py status ;;
+            restore) python3 gdrive_sync.py restore ;;
+            backup)  python3 gdrive_sync.py backup ;;
+          esac
+
+      - name: Push cache-auto after restore
+        if: inputs.action == 'restore'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ ! -d cache ] || [ -z "$(ls -A cache 2>/dev/null)" ]; then
+            echo "⚠️  Cache vide après restore"
+            exit 0
+          fi
+          cd /tmp && rm -rf gopush
+          git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" gopush 2>/dev/null
+          cd gopush
+          git config user.email "actions@users.noreply.github.com"
+          git config user.name "GOANGEL Auto"
+          git checkout -B cache-auto
+          git lfs install --local >/dev/null 2>&1 || true
+          git lfs track "*.pkl" >/dev/null 2>&1 || true
+          git add .gitattributes 2>/dev/null || true
+          mkdir -p cache
+          cp -r "${{ github.workspace }}/cache/." cache/ 2>/dev/null || true
+          git add -A
+          git add -f cache/ 2>/dev/null || true
+          git commit -m "restore from Drive $(date +%s)" || echo "no changes"
+          for i in 1 2 3; do
+            git push origin cache-auto --force 2>&1 && break
+            sleep 5
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: drive-sync-log-${{ github.run_id }}
+          path: "*.log"
+          retention-days: 7
+          if-no-files-found: ignore
