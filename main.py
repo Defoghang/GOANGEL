@@ -1357,10 +1357,19 @@ def _finalize_pb_one(stage_name: str, class_name: str) -> None:
     y_arr = np.array(y_kept, dtype=np.int64)
     calib_ll = float(log_loss(y_arr, probas_arr, labels=[0, 1, 2]))
 
+    _is_bayesian = class_name in (
+        "BayesianGoalModel",
+        "HierarchicalBayesianGoalModel",
+    )
+    _n_folds = 2 if _is_bayesian else MODEL_WALK_FORWARD_FOLDS
+    if _is_bayesian:
+        stage_print(f"   ⚙️  {class_name} : walk-forward adapté ({_n_folds} folds)")
+
     ll_wf, ev, at = _evaluate_pb_model_walk_forward(
         class_name, ctx["gh_train"], ctx["ga_train"],
         ctx["home_keys_train"], ctx["away_keys_train"],
-        MODEL_WALK_FORWARD_FOLDS,
+        _n_folds,
+        checkpoint_dir=Path(CACHE_DIR) / "stages" / "pb_convergence" / "wf_checkpoints" / class_name,
     )
     if not np.isfinite(ll_wf):
         ll_wf = calib_ll
