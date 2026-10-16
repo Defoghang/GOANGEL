@@ -132,6 +132,16 @@ from api import (
 )
 
 from pb_convergence import PBIncompleteError
+from checkpoint_all import (
+    save_step as ck_save_step, load_step as ck_load_step,
+    has_step as ck_has_step, save_fold as ck_save_fold,
+    list_folds as ck_list_folds, load_finalize_context,
+    save_finalize_context, save_ml_trained, save_ml_calibrated,
+    save_pb_finalized, save_finalize_partial, load_finalize_partial,
+    has_finalize_partial, list_finalize_partials, save_finalize_agg,
+    ml_key, pb_key, finalize_key, STEP_TRAINED, STEP_CALIBRATED,
+    STEP_FINALIZED, STEP_CONTEXT, STEP_PARTIAL,
+)
 
 # Forcer l'application du patch bayesian au chargement du module
 try:
@@ -877,6 +887,13 @@ def _stage_load_features() -> Dict[str, Any]:
 
 
 def _stage_train_ml_model(model_name: str) -> None:
+    if ck_has_step(ml_key(model_name), STEP_TRAINED):
+        ck = ck_load_step(ml_key(model_name), STEP_TRAINED)
+        if ck and ck.get("payload"):
+            mp = ck["payload"].get("model_path")
+            if mp and Path(mp).exists():
+                stage_print(f"📦 {model_name} récupéré du checkpoint universel")
+                return
     payload = _stage_load_features()
     X = payload["X"]
     y = payload["y"]
@@ -961,6 +978,8 @@ def _stage_train_ml_model(model_name: str) -> None:
             stage_print(f"⚠️ DL : LogLoss indisponible ({_exc})")
 
         _atomic_write_pickle(model_path, {"model": model, "type": "DL", "imputer": imputer, "scaler": scaler})
+        save_ml_trained("DL", str(model_path))
+        save_ml_calibrated("DL", "built_in")
         stage_print(f"💾 {model_name} sauvegardé : {model_path}")
         return
 
@@ -997,6 +1016,8 @@ def _stage_train_ml_model(model_name: str) -> None:
         stage_print(f"⚠️ {model_name} : LogLoss indisponible ({_exc})")
 
     _atomic_write_pickle(model_path, {"model": m, "type": model_name, "imputer": imputer, "scaler": scaler})
+    save_ml_trained(model_name, str(model_path))
+    save_ml_calibrated(model_name, "built_in")
     stage_print(f"💾 {model_name} sauvegardé : {model_path}")
 
 
@@ -1170,6 +1191,7 @@ def _stage_finalize_prep() -> None:
     })
 
     save_context(ctx)
+    save_finalize_context({k: v for k, v in ctx.items() if k not in ("Xs_train", "Xs_calib", "Xs_test", "X_train_imp", "X_calib_imp", "X_test_imp")})
     stage_print("💾 Contexte sauvegardé : cache/stages/finalize/context.pkl")
 
 
@@ -1273,6 +1295,11 @@ def _finalize_pb_one(stage_name: str, class_name: str) -> None:
     )
 
     stage_print(f"🔧 FINALIZE PB — {class_name}")
+
+    if ck_has_step(pb_key(class_name), STEP_FINALIZED):
+        stage_print(f"📦 {class_name} déjà finalisé (checkpoint universel)")
+        return
+
     ctx = load_context()
     if ctx is None:
         raise RuntimeError("Contexte finalize absent — lancer finalize_prep d'abord")
@@ -1326,14 +1353,17 @@ def _finalize_pb_one(stage_name: str, class_name: str) -> None:
         f"WF {float(ll_wf):.4f} ({ev}/{at})"
     )
 
-    save_partial(class_name, {
+    _pb_payload = {
         "model_key": class_name,
         "calib_ll": calib_ll,
         "wf_ll": float(ll_wf),
         "wf_eval": ev,
         "wf_attempt": at,
         "calib_status": "not_calibrated",
-    })
+    }
+    save_partial(class_name, _pb_payload)
+    save_pb_finalized(class_name, calib_ll, float(ll_wf), "not_calibrated", 0)
+    save_finalize_partial(class_name, _pb_payload)
 
 
 def _stage_finalize_agg() -> None:
