@@ -24,6 +24,4 @@ env/
 *.egg-info/
 build/
 dist/
-credentials/
 *.json.tmp
-gdrive-service-account.json
