@@ -773,7 +773,7 @@ apply_bayesian_init_patch()
 # ─────────────────────────────────────────────────────────────────────────────
 
 _BAYESIAN_WALKERS_PATCHED: bool = False
-_BAYESIAN_MAX_WALKERS: int = 300
+_BAYESIAN_MAX_WALKERS: int = 450
 
 
 def _patched_generate_start_positions(
