@@ -565,7 +565,8 @@ jobs:
     needs: finalize_pb_weibull
     if: |
       always() && !cancelled() &&
-      needs.finalize_pb_weibull.result == 'success' &&
+      needs.finalize_pb_weibull.result != 'failure' &&
+      needs.finalize_pb_weibull.result != 'cancelled' &&
       (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_bayesian')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -583,7 +584,8 @@ jobs:
     needs: finalize_pb_bayesian
     if: |
       always() && !cancelled() &&
-      needs.finalize_pb_bayesian.result == 'success' &&
+      needs.finalize_pb_bayesian.result != 'failure' &&
+      needs.finalize_pb_bayesian.result != 'cancelled' &&
       (inputs.force_stage == '' || inputs.force_stage == 'finalize_pb_hierarchical')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -601,7 +603,8 @@ jobs:
     needs: finalize_pb_hierarchical
     if: |
       always() && !cancelled() &&
-      needs.finalize_pb_hierarchical.result == 'success' &&
+      needs.finalize_pb_hierarchical.result != 'failure' &&
+      needs.finalize_pb_hierarchical.result != 'cancelled' &&
       (inputs.force_stage == '' || inputs.force_stage == 'finalize_agg')
     uses: ./.github/workflows/_stage_runner.yml
     with:
@@ -621,7 +624,7 @@ jobs:
     if: |
       always() && !cancelled() &&
       needs.finalize_agg.result == 'success' &&
-      (inputs.force_stage == '' || inputs.force_stage == 'release')
+      inputs.force_stage == ''
     uses: ./.github/workflows/release.yml
     with:
       version: ""
