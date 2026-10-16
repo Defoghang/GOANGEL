@@ -3217,21 +3217,56 @@ def _evaluate_pb_model_walk_forward(
     th: List[str],
     ta: List[str],
     n_folds: int,
+    checkpoint_dir: Optional[Path] = None,
 ) -> Tuple[float, int, int]:
+    """Walk-forward PB AVEC checkpoint fold-par-fold.
+    Si checkpoint_dir fourni : sauvegarde chaque fold, reprend au premier manquant."""
+    import pickle as _pk
+    from pathlib import Path as _P
+
     n_samples = len(gh)
     if n_samples < max(200, _PB_WF_MIN_TRAIN_SAMPLES) or n_folds < 2:
         return float("inf"), 0, 0
+
     splits = _walk_forward_splits(n_samples, n_folds)
     log_losses: List[float] = []
     evaluated = 0
     attempted = 0
 
-    for train_end, val_end in splits:
+    # ─── Charger checkpoints existants ───
+    done_folds = {}
+    if checkpoint_dir is not None:
+        try:
+            cd = _P(checkpoint_dir)
+            cd.mkdir(parents=True, exist_ok=True)
+            for fp in sorted(cd.glob("fold_*.pkl")):
+                try:
+                    with open(fp, "rb") as f:
+                        payload = _pk.load(f)
+                    idx = int(fp.stem.split("_")[1])
+                    done_folds[idx] = payload
+                    logger.info("📦 %s fold %d chargé depuis checkpoint", class_name, idx)
+                except Exception as exc:
+                    logger.warning("Checkpoint fold %s illisible : %s", fp, exc)
+        except Exception as exc:
+            logger.warning("Init checkpoint_dir échouée : %s", exc)
+
+    for i, (train_end, val_end) in enumerate(splits):
         attempted += 1
+
+        # Reprise depuis checkpoint
+        if i in done_folds:
+            ll_saved = done_folds[i].get("ll")
+            if ll_saved is not None and np.isfinite(ll_saved):
+                log_losses.append(float(ll_saved))
+                evaluated += 1
+                continue
+
         if train_end < _PB_WF_MIN_TRAIN_SAMPLES:
             continue
         if (val_end - train_end) < _PB_WF_MIN_VAL_SAMPLES:
             continue
+
         try:
             gh_tr = gh[:train_end]
             ga_tr = ga[:train_end]
@@ -3290,13 +3325,24 @@ def _evaluate_pb_model_walk_forward(
             ll = log_loss(y_arr, probas_arr, labels=[0, 1, 2])
             log_losses.append(float(ll))
             evaluated += 1
+
+            # ─── Sauvegarder le fold ───
+            if checkpoint_dir is not None:
+                try:
+                    fp = _P(checkpoint_dir) / f"fold_{i:02d}.pkl"
+                    with open(fp, "wb") as f:
+                        _pk.dump({"ll": float(ll), "fold": i, "n_val": len(probas)}, f)
+                except Exception as exc:
+                    logger.warning("Sauvegarde fold %d échouée : %s", i, exc)
+
         except Exception as exc:
-            logger.debug("PB walk-forward fold échoué : %s", exc)
+            logger.debug("PB walk-forward fold %d échoué : %s", i, exc)
             continue
 
     if not log_losses:
         return float("inf"), evaluated, attempted
     return float(np.mean(log_losses)), evaluated, attempted
+
 
 
 def _make_xgb_factory() -> Callable[[], Any]:
