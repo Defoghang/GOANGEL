@@ -74,6 +74,25 @@ if ! command -v rclone &>/dev/null; then
   curl -sS https://rclone.org/install.sh | sudo bash >/dev/null 2>&1 || true
 fi
 
+echo "🔍 Diagnostic rclone :"
+echo "  rclone binary : $(command -v rclone || echo 'ABSENT')"
+echo "  RCLONE_CONFIG : ${#RCLONE_CONFIG} caractères"
+
+if [ -z "${RCLONE_CONFIG}" ]; then
+  echo "  ❌ RCLONE_CONFIG NON DÉFINI"
+else
+  echo "${RCLONE_CONFIG}" | base64 -d > /tmp/rclone.conf 2>/dev/null
+  B64_RC=$?
+  if [ "$B64_RC" = "0" ] && [ -s /tmp/rclone.conf ]; then
+    chmod 600 /tmp/rclone.conf
+    echo "  ✅ rclone.conf créé : $(stat -c%s /tmp/rclone.conf) bytes"
+  else
+    echo "  ⚠️  Décodage base64 échoué (RC=$B64_RC), fallback brut"
+    echo "${RCLONE_CONFIG}" > /tmp/rclone.conf
+    chmod 600 /tmp/rclone.conf
+  fi
+fi
+
 pip install --upgrade pip -q
 pip install -q requests python-dotenv numpy pandas scipy scikit-learn
 pip install -q xgboost lightgbm catboost penaltyblog
