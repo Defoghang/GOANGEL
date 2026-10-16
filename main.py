@@ -1365,7 +1365,7 @@ def _finalize_pb_one(stage_name: str, class_name: str) -> None:
         "BayesianGoalModel",
         "HierarchicalBayesianGoalModel",
     )
-    _n_folds = 2 if _is_bayesian else MODEL_WALK_FORWARD_FOLDS
+    _n_folds = 1 if _is_bayesian else MODEL_WALK_FORWARD_FOLDS
     if _is_bayesian:
         stage_print(f"   ⚙️  {class_name} : walk-forward adapté ({_n_folds} folds)")
 
