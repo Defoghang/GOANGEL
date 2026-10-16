@@ -6,7 +6,7 @@ on:
 jobs:
   restore:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -21,78 +21,120 @@ jobs:
           echo "${RCLONE_CONFIG}" | base64 -d > /tmp/rclone.conf
           chmod 600 /tmp/rclone.conf
 
-      - name: Clone and fetch LFS
+      - name: Get all LFS pointers via API
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git lfs install 2>/dev/null || true
-          git clone "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" /tmp/cache-repo 2>&1 | tail -2
-          cd /tmp/cache-repo
-          git fetch --all --tags 2>&1 | tail -3
-          git checkout cache-auto 2>&1 | tail -2
-          git lfs fetch --all 2>&1 | tail -3
-          git lfs checkout 2>&1 | tail -3
+          set -e
+          REPO="${{ github.repository }}"
+          mkdir -p /tmp/restore
 
-      - name: Restore pkl files
+          echo "── Récupération du tree cache-auto ──"
+          gh api "repos/${REPO}/git/trees/cache-auto?recursive=1" \
+            --jq '.tree[] | select(.type=="blob") | .path' > /tmp/all_paths.txt
+
+          echo "── Fichiers pkl trouvés ──"
+          grep -E "\.pkl$" /tmp/all_paths.txt | head -30
+
+      - name: Fetch LFS OIDs from each pkl
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cd /tmp/cache-repo
-          mkdir -p /tmp/restored
-          for P in \
-            cache/historical.pkl \
-            cache/stages/features.pkl \
-            cache/stages/metadata.pkl \
-            cache/stages/models/ml_XGB.pkl \
-            cache/stages/models/ml_LGBM.pkl \
-            cache/stages/models/ml_CatBoost.pkl \
-            cache/stages/models/ml_RF.pkl \
-            cache/stages/models/ml_DL.pkl \
-            cache/stages/models/pb_PoissonGoalsModel.pkl \
-            cache/stages/models/pb_DixonColesGoalModel.pkl \
-            cache/stages/models/pb_BivariatePoissonGoalModel.pkl \
-            cache/stages/models/pb_NegativeBinomialGoalModel.pkl \
-            cache/stages/models/pb_WeibullCopulaGoalsModel.pkl \
-            cache/stages/models/pb_ZeroInflatedPoissonGoalsModel.pkl; do
-            C=$(git log --all --format=%H -1 -- "$P" 2>/dev/null)
-            if [ -z "$C" ]; then
-              echo "SKIP $P"
+          set -e
+          REPO="${{ github.repository }}"
+          mkdir -p /tmp/oids
+
+          while IFS= read -r FILE_PATH; do
+            [ -z "$FILE_PATH" ] && continue
+            echo "── $FILE_PATH ──"
+
+            CONTENT=$(gh api "repos/${REPO}/contents/${FILE_PATH}?ref=cache-auto" \
+              --jq '.content' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+
+            OID=$(echo "$CONTENT" | grep -oE 'sha256:[a-f0-9]+' | cut -d: -f2 | head -1)
+            SIZE=$(echo "$CONTENT" | grep -oE 'size [0-9]+' | awk '{print $2}' | head -1)
+
+            if [ -n "$OID" ] && [ -n "$SIZE" ]; then
+              echo "  OID=$OID SIZE=$SIZE"
+              echo "$FILE_PATH|$OID|$SIZE" >> /tmp/oids/manifest.txt
+            else
+              echo "  ⚠️  Pas un pointeur LFS"
+            fi
+          done < <(grep -E "\.pkl$" /tmp/all_paths.txt)
+
+          echo ""
+          echo "── Manifest ──"
+          cat /tmp/oids/manifest.txt
+
+      - name: Download blobs from LFS
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          REPO="${{ github.repository }}"
+          mkdir -p /tmp/restore
+
+          while IFS='|' read -r FILE_PATH OID SIZE; do
+            [ -z "$OID" ] && continue
+            echo "── Download $FILE_PATH ($SIZE bytes) ──"
+
+            BATCH=$(curl -sS -X POST \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.git-lfs+json" \
+              -H "Content-Type: application/vnd.git-lfs+json" \
+              -d "{\"operation\":\"download\",\"transfers\":[\"basic\"],\"objects\":[{\"oid\":\"${OID}\",\"size\":${SIZE}}]}" \
+              "https://github.com/${REPO}.git/info/lfs/objects/batch")
+
+            HREF=$(echo "$BATCH" | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    for o in d.get('objects', []):
+        a = o.get('actions', {})
+        if 'download' in a:
+            print(a['download']['href'])
+            break
+except Exception:
+    pass
+")
+
+            if [ -z "$HREF" ]; then
+              echo "  ❌ Pas d'URL"
               continue
             fi
-            mkdir -p "/tmp/restored/$(dirname "$P")"
-            git show "${C}:${P}" > "/tmp/restored/${P}" 2>/dev/null
-            SZ=$(stat -c%s "/tmp/restored/${P}" 2>/dev/null || echo 0)
-            HB=$(head -c 4 "/tmp/restored/${P}" 2>/dev/null || echo "")
-            if [ "$HB" = "vers" ] || [ "$SZ" -lt 1000 ]; then
-              OID=$(grep -oE 'sha256:[a-f0-9]+' "/tmp/restored/${P}" | cut -d: -f2 | head -1)
-              echo "LFS $P OID=$OID"
-              if [ -n "$OID" ]; then
-                mkdir -p /tmp/lfs_files
-                cd /tmp/cache-repo
-                git lfs pull --include="$P" 2>&1 | tail -1 || true
-                if [ -f "/tmp/cache-repo/$P" ]; then
-                  SZ2=$(stat -c%s "/tmp/cache-repo/$P" 2>/dev/null || echo 0)
-                  if [ "$SZ2" -gt 1000 ]; then
-                    cp "/tmp/cache-repo/$P" "/tmp/restored/$P"
-                    echo "  OK $P ($SZ2 bytes)"
-                  fi
-                fi
-              fi
+
+            mkdir -p "/tmp/restore/$(dirname "$FILE_PATH")"
+            curl -sS -L -o "/tmp/restore/${FILE_PATH}" "$HREF"
+
+            GOT=$(stat -c%s "/tmp/restore/${FILE_PATH}" 2>/dev/null || echo 0)
+            if [ "$GOT" = "$SIZE" ]; then
+              echo "  ✅ $GOT bytes"
             else
-              echo "OK $P ($SZ bytes)"
+              echo "  ⚠️  $GOT vs $SIZE"
             fi
-          done
-          echo "── Fichiers restaurés ──"
-          find /tmp/restored -name "*.pkl" -exec ls -lh {} \; 2>/dev/null
+          done < /tmp/oids/manifest.txt
+
+          echo ""
+          echo "── Contenu restauré ──"
+          find /tmp/restore -name "*.pkl" -exec ls -lh {} \; 2>/dev/null
 
       - name: Upload to Drive
         env:
           RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
         run: |
+          set -e
           echo "${RCLONE_CONFIG}" | base64 -d > /tmp/rclone.conf
           chmod 600 /tmp/rclone.conf
-          if [ -d /tmp/restored/cache ]; then
-            rclone --config /tmp/rclone.conf copy /tmp/restored/cache/ gdrive:GOANGEL/cache/ \
-              --transfers 8 --checkers 16 \
-              --stats-one-line --stats 10s 2>&1 | tail -5
+
+          if [ ! -d /tmp/restore/cache ]; then
+            echo "⚠️  Rien à uploader"
+            exit 0
           fi
+
+          rclone --config /tmp/rclone.conf copy /tmp/restore/cache/ gdrive:GOANGEL/cache/ \
+            --transfers 8 --checkers 16 \
+            --stats-one-line --stats 10s 2>&1 | tail -5
+
+          echo ""
           echo "── Taille Drive ──"
           rclone --config /tmp/rclone.conf size gdrive:GOANGEL/cache/
