@@ -65,6 +65,7 @@ jobs:
           MAX_ATTEMPTS: ${{ inputs.max_attempts_per_model }}
           IS_RETRY: ${{ inputs.is_retry }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
         run: bash .github/scripts/run_stage.sh
 
       - uses: actions/upload-artifact@v4

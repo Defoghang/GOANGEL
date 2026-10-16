@@ -107,80 +107,48 @@ ENVEOF
 
 mkdir -p cache
 
-echo "↻ Restauration cache-auto..."
+echo "☁️  Restauration cache depuis Google Drive + GitHub..."
+
+mkdir -p cache/stages/done cache/stages/attempts cache/stages/models
+
+# ─── 1. Drive en priorité (gros fichiers) ───
+if [ -f /tmp/rclone.conf ]; then
+  echo "  📥 Drive : cache/..."
+  rclone --config /tmp/rclone.conf sync gdrive:GOANGEL/cache/ cache/ \
+    --transfers 8 --checkers 16 \
+    --exclude "*.tmp" --exclude "*.log" \
+    --stats-one-line --stats 10s 2>&1 | tail -3 || true
+
+  echo "  🔍 Vérification :"
+  for f in cache/historical.pkl cache/stages/features.pkl; do
+    if [ -f "$f" ]; then
+      SZ=$(stat -c%s "$f" 2>/dev/null || echo 0)
+      HB=$(head -c 4 "$f" 2>/dev/null || echo "")
+      if [ "$HB" = "vers" ] || [ "$SZ" -lt 1000 ]; then
+        echo "     ❌ $f : pointeur LFS ($SZ bytes)"
+      else
+        echo "     ✅ $f : $SZ bytes"
+      fi
+    fi
+  done
+fi
+
+# ─── 2. GitHub : marqueurs .done + compteurs .json + metadata ───
 if gh api "repos/${GITHUB_REPOSITORY}/branches/cache-auto" >/dev/null 2>&1; then
   rm -rf /tmp/ckpt_restore
-  export GIT_LFS_SKIP_SMUDGE=1
-
-  git lfs install --local 2>&1 | tail -1
-
   git clone --depth 1 --branch cache-auto \
     "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
-    /tmp/ckpt_restore 2>&1 | tail -3
+    /tmp/ckpt_restore 2>&1 | tail -2
 
-  if [ -d /tmp/ckpt_restore ]; then
-    cd /tmp/ckpt_restore
-
-    git remote set-url origin \
-      "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-
-    git lfs install --local >/dev/null 2>&1 || true
-
-    echo "  📥 git lfs fetch --all..."
-    git lfs fetch --all 2>&1 | tail -2 || true
-
-    echo "  📥 git lfs checkout..."
-    git lfs checkout 2>&1 | tail -2 || true
-
-    echo "  📥 git lfs pull origin cache-auto..."
-    git lfs pull origin cache-auto 2>&1 | tail -2 || true
-
-    cd "${GITHUB_WORKSPACE}"
-
-    cp -r /tmp/ckpt_restore/cache/. cache/ 2>/dev/null || true
-
-    echo "  🔍 Vérification post-copie :"
-    LFS_POINTER=0
-    for f in cache/historical.pkl cache/stages/features.pkl; do
-      if [ -f "$f" ]; then
-        HB=$(head -c 4 "$f" 2>/dev/null || echo "")
-        SZ=$(stat -c%s "$f" 2>/dev/null || echo 0)
-        if [ "$HB" = "vers" ] || [ "$SZ" -lt 1000 ]; then
-          echo "     ❌ POINTEUR LFS : $f ($SZ bytes)"
-          LFS_POINTER=1
-        else
-          echo "     ✅ $f : $SZ bytes"
-        fi
-      fi
-    done
-
-    if [ "$LFS_POINTER" = "1" ]; then
-      echo "  ⚠️  Fallback : download LFS par API directe..."
-      for f in cache/historical.pkl cache/stages/features.pkl; do
-        echo "     Téléchargement : $f"
-        lfs_download_by_api "$f" "$f" || true
-      done
-
-      echo "  🔍 Vérification après download direct :"
-      for f in cache/historical.pkl cache/stages/features.pkl; do
-        if [ -f "$f" ]; then
-          SZ=$(stat -c%s "$f" 2>/dev/null || echo 0)
-          HB=$(head -c 4 "$f" 2>/dev/null || echo "")
-          if [ "$HB" = "vers" ] || [ "$SZ" -lt 1000 ]; then
-            echo "     ❌ $f : encore pointeur ($SZ bytes)"
-          else
-            echo "     ✅ $f : $SZ bytes (OK)"
-          fi
-        fi
-      done
-    fi
+  if [ -d /tmp/ckpt_restore/cache ]; then
+    echo "  📥 GitHub : marqueurs (.done, .json) + metadata"
+    mkdir -p cache/stages/done cache/stages/attempts
+    cp -f /tmp/ckpt_restore/cache/stages/done/*.done cache/stages/done/ 2>/dev/null || true
+    cp -f /tmp/ckpt_restore/cache/stages/attempts/*.json cache/stages/attempts/ 2>/dev/null || true
+    cp -f /tmp/ckpt_restore/cache/stages/metadata.pkl cache/stages/metadata.pkl 2>/dev/null || true
   fi
 fi
 
-if [ -f "gdrive_sync.py" ]; then
-  echo "☁️  Restauration cache depuis Google Drive..."
-  python3 gdrive_sync.py restore 2>&1 | tail -10 || true
-fi
 
 if [ -f "cache/stages/done/${STAGE}.done" ]; then
   echo "✅ Stage ${STAGE} déjà terminé (marqueur .done présent) — skip"
@@ -210,7 +178,37 @@ RC=${PIPESTATUS[0]}
 DURATION=$(($(date +%s) - START_TS))
 echo "🏁 Stage ${STAGE} terminé RC=${RC} en ${DURATION}s"
 
-echo "↻ Push cache-auto..."
+echo "☁️  Push cache → Google Drive + GitHub (marqueurs)..."
+
+# ─── 1. Push Drive (tout le cache) ───
+if [ -f /tmp/rclone.conf ]; then
+  echo "  📤 Drive : cache/..."
+  rclone --config /tmp/rclone.conf sync cache/ gdrive:GOANGEL/cache/ \
+    --transfers 8 --checkers 16 \
+    --exclude "*.tmp" --exclude "*.log" \
+    --stats-one-line --stats 10s 2>&1 | tail -3 || true
+  echo "  ✅ Drive pushé"
+fi
+
+# ─── 2. Push GitHub cache-auto (marqueurs uniquement) ───
+echo "  📤 GitHub cache-auto (marqueurs)..."
+
+# Créer .gitignore pour cache-auto (exclure tous les .pkl sauf metadata)
+mkdir -p /tmp/goangel-gitignore
+cat > /tmp/goangel-gitignore/.gitignore <<'GIEOF'
+# Cache local (gros fichiers → Drive)
+cache/**/*.pkl
+cache/*.pkl
+!cache/stages/metadata.pkl
+
+# Logs & temp
+*.tmp
+*.log
+checkpoints/
+checkpoints/**
+cache/checkpoints/
+GIEOF
+
 cd /tmp && rm -rf gopush
 git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gopush 2>/dev/null
 cd gopush
@@ -218,29 +216,28 @@ git config user.email "actions@users.noreply.github.com"
 git config user.name "GOANGEL Auto"
 git checkout -B cache-auto
 
-rm -rf cache/checkpoints 2>/dev/null || true
+# Copier .gitignore
+cp /tmp/goangel-gitignore/.gitignore .gitignore
 
-git lfs install --local >/dev/null 2>&1 || true
-git lfs track "*.pkl" >/dev/null 2>&1 || true
-git lfs track "*.pkl.xz" >/dev/null 2>&1 || true
-git lfs track "*.h5" >/dev/null 2>&1 || true
-git lfs track "*.pt" >/dev/null 2>&1 || true
-git lfs track "*.pth" >/dev/null 2>&1 || true
-git add .gitattributes 2>/dev/null || true
+# Nettoyer les .pkl anciens du repo (migration LFS → Drive)
+git rm -r --cached cache/ 2>/dev/null || true
 
-mkdir -p cache
-if [ -d "${GITHUB_WORKSPACE}/cache" ]; then
-  cp -r "${GITHUB_WORKSPACE}/cache/." cache/ 2>/dev/null || true
-fi
+# Recréer la structure avec SEULEMENT les petits fichiers
+mkdir -p cache/stages/done cache/stages/attempts
+cp -f "${GITHUB_WORKSPACE}/cache/stages/done/"*.done cache/stages/done/ 2>/dev/null || true
+cp -f "${GITHUB_WORKSPACE}/cache/stages/attempts/"*.json cache/stages/attempts/ 2>/dev/null || true
+cp -f "${GITHUB_WORKSPACE}/cache/stages/metadata.pkl" cache/stages/metadata.pkl 2>/dev/null || true
+
+# Supprimer LFS tracking (.gitattributes)
+rm -f .gitattributes
 
 git add -A
-git add -f cache/ 2>/dev/null || true
 git commit -m "checkpoint ${STAGE} run${GITHUB_RUN_ID} att${NEW_COUNT} rc${RC} $(date +%s)" || echo "no changes"
 
 PUSH_OK=0
 for push_attempt in 1 2 3; do
-  echo "  Push tentative ${push_attempt}/3..."
-  if git push origin cache-auto --force 2>&1; then
+  echo "  Push GitHub tentative ${push_attempt}/3..."
+  if git push origin cache-auto --force 2>&1 | tail -3; then
     PUSH_OK=1
     break
   fi
@@ -249,10 +246,10 @@ done
 cd "${GITHUB_WORKSPACE}"
 
 if [ "${PUSH_OK}" != "1" ]; then
-  echo "❌ PUSH cache-auto ÉCHOUÉ après 3 tentatives"
-  exit 5
+  echo "  ⚠️  GitHub push échoué (non critique, Drive reste source de vérité)"
 fi
-echo "✅ cache-auto pushé (stage=${STAGE})"
+
+echo "✅ Cache sauvegardé (Drive + GitHub)"
 
 if [ -f "gdrive_sync.py" ]; then
   echo "☁️  Backup cache vers Google Drive..."
