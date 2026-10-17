@@ -39,7 +39,7 @@ concurrency:
 jobs:
   prepare:
     name: "01 - Prepare"
-    if: always() && !cancelled() && (inputs.force_stage == '' || inputs.force_stage == 'prepare')
+    if: inputs.force_stage == '' || inputs.force_stage == 'prepare'
     uses: ./.github/workflows/_stage_runner.yml
     with:
       stage: prepare
