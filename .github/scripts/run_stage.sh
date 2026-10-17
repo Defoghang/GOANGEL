@@ -132,11 +132,12 @@ mkdir -p cache/stages/done cache/stages/attempts cache/stages/models
 
 # ─── 1. Drive en priorité (gros fichiers) ───
 if [ -f /tmp/rclone.conf ]; then
+  mkdir -p cache/stages/done cache/stages/attempts cache/stages/models cache/stages/finalize
   echo "  📥 Drive : cache/..."
   rclone --config /tmp/rclone.conf copy gdrive:GOANGEL/cache/ cache/ \
     --transfers 8 --checkers 16 \
     --exclude "*.tmp" --exclude "*.log" \
-    --ignore-existing \
+    --ignore-existing --ignore-errors \
     --stats-one-line --stats 10s 2>&1 | tail -3 || true
 
   echo "  📥 Drive : cache/stages/models/ (modèles critiques)"

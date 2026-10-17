@@ -1210,6 +1210,12 @@ def _finalize_ml_one(model_name: str) -> None:
     stage_print(f"🔧 FINALIZE ML — {model_name}")
     ctx = load_context()
     if ctx is None:
+        stage_print("⚠️  Contexte absent — régénération via finalize_prep...")
+        _stage_finalize_prep()
+        ctx = load_context()
+        if ctx is None:
+            raise RuntimeError("Impossible de générer le contexte finalize")
+    if ctx is None:
         raise RuntimeError("Contexte finalize absent — lancer finalize_prep d'abord")
 
     model_path = MODELS_DIR / f"ml_{model_name}.pkl"
@@ -1316,7 +1322,11 @@ def _finalize_pb_one(stage_name: str, class_name: str) -> None:
     stage_print(f"🔧 FINALIZE PB — {class_name}")
     ctx = load_context()
     if ctx is None:
-        raise RuntimeError("Contexte finalize absent — lancer finalize_prep d'abord")
+        stage_print("⚠️  Contexte absent — régénération via finalize_prep...")
+        _stage_finalize_prep()
+        ctx = load_context()
+        if ctx is None:
+            raise RuntimeError("Impossible de générer le contexte finalize")
 
     model_path = MODELS_DIR / f"pb_{class_name}.pkl"
     if not model_path.exists():
@@ -1413,7 +1423,11 @@ def _stage_finalize_agg() -> None:
     stage_print("🔧 FINALIZE AGG — agrégation finale")
     ctx = load_context()
     if ctx is None:
-        raise RuntimeError("Contexte finalize absent")
+        stage_print("⚠️  Contexte absent — régénération...")
+        _stage_finalize_prep()
+        ctx = load_context()
+        if ctx is None:
+            raise RuntimeError("Impossible de générer le contexte finalize")
 
     partials = list_partials()
     stage_print(f"   {len(partials)} partials chargés")
