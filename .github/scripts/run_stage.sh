@@ -183,24 +183,6 @@ fi
 if [ -f "cache/stages/done/${STAGE}.done" ]; then
   echo "✅ Stage ${STAGE} déjà terminé (marqueur .done présent) — skip"
   
-  if [ "${IS_RETRY}" = "true" ]; then
-    NEXT=$(python3 main.py --stage next 2>/dev/null | grep '^NEXT:' | cut -d: -f2 | tr -d '[:space:]')
-    if [ -n "${NEXT}" ] && [ "${NEXT}" != "DONE" ]; then
-      echo "🚀 Lancement automatique du stage suivant : ${NEXT}"
-      sleep 10
-      gh workflow run train.yml --repo "${GITHUB_REPOSITORY}" \
-        -f seasons_lookback=${SEASONS} \
-        -f enrich_xg=${ENRICH} \
-        -f workers_per_key=${WORKERS_PER_KEY} \
-        -f max_workers=${MAX_WORKERS} \
-        -f rate_limit_per_minute=${RATE_LIMIT} \
-        -f max_attempts_per_model=${MAX_ATTEMPTS} \
-        -f force_stage=${NEXT} \
-        -f is_retry=true
-    else
-      echo "🎉 PIPELINE TERMINÉ (NEXT=DONE)"
-    fi
-  fi
   exit 0
 fi
 
@@ -324,24 +306,7 @@ fi
 if [ "${RC}" = "0" ]; then
   echo "✅ Stage ${STAGE} terminé avec succès (RC=0)"
   
-  if [ "${IS_RETRY}" = "true" ]; then
-    NEXT=$(python3 main.py --stage next 2>/dev/null | grep '^NEXT:' | cut -d: -f2 | tr -d '[:space:]')
-    if [ -n "${NEXT}" ] && [ "${NEXT}" != "DONE" ]; then
-      echo "🚀 Lancement automatique du stage suivant : ${NEXT}"
-      sleep 10
-      gh workflow run train.yml --repo "${GITHUB_REPOSITORY}" \
-        -f seasons_lookback=${SEASONS} \
-        -f enrich_xg=${ENRICH} \
-        -f workers_per_key=${WORKERS_PER_KEY} \
-        -f max_workers=${MAX_WORKERS} \
-        -f rate_limit_per_minute=${RATE_LIMIT} \
-        -f max_attempts_per_model=${MAX_ATTEMPTS} \
-        -f force_stage=${NEXT} \
-        -f is_retry=true
-    else
-      echo "🎉 PIPELINE TERMINÉ (NEXT=DONE)"
-    fi
-  fi
+  echo "✅ Stage ${STAGE} terminé avec succès (RC=0)"
   exit 0
 fi
 
