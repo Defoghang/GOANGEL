@@ -726,19 +726,10 @@ def _is_stage_done(stage: str) -> bool:
     data = _read_json(done_path)
     if not isinstance(data, dict):
         return False
-    files = data.get("files")
-    if not isinstance(files, dict) or not files:
+    if data.get("stage") != stage:
         return False
-    for path_str, expected_hash in files.items():
-        p = Path(path_str)
-        if not p.exists():
-            return False
-        try:
-            if _sha256_file(p) != expected_hash:
-                return False
-        except Exception:
-            return False
     return True
+
 
 
 def _mark_stage_done(stage: str) -> bool:
