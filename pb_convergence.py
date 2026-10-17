@@ -1415,3 +1415,36 @@ def get_pb_filter_for_attempt(attempt: int) -> Dict[str, Any]:
         "max_goals": int(spec["max_goals"]),
         "half_life": float(spec["half_life"]),
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Patch Unpickle : Écrase la trace MCMC pendant le pickle.load() (anti-OOM)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def apply_unpickle_strip_patch():
+    try:
+        from penaltyblog.models import BayesianGoalModel, HierarchicalBayesianGoalModel
+        
+        classes = (BayesianGoalModel, HierarchicalBayesianGoalModel)
+        for cls in classes:
+            if not hasattr(cls, "_goangel_unpickle_patched"):
+                # Sauvegarder le __setstate__ original s'il existe
+                orig_setstate = getattr(cls, "__setstate__", None)
+                
+                def make_patched(orig):
+                    def patched(self, state):
+                        if orig:
+                            orig(self, state)
+                        else:
+                            self.__dict__.update(state)
+                        # Écrase la trace IMMÉDIATEMENT
+                        _compact_mcmc_trace(self)
+                    return patched
+                
+                cls.__setstate__ = make_patched(orig_setstate)
+                cls._goangel_unpickle_patched = True
+                logger.info("✅ Patch __setstate__ appliqué à %s (anti-OOM)", cls.__name__)
+    except Exception as e:
+        logger.warning("Impossible d'appliquer le patch unpickle : %s", e)
+
+apply_unpickle_strip_patch()
