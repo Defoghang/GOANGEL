@@ -143,9 +143,10 @@ if [ -f /tmp/rclone.conf ]; then
   rclone --config /tmp/rclone.conf copy gdrive:GOANGEL/cache/stages/models/ cache/stages/models/ \
     --transfers 8 --checkers 16 --ignore-existing 2>&1 | tail -2 || true
 
+  mkdir -p cache/stages/finalize cache/stages/models
   echo "  📥 Drive : cache/stages/finalize/"
   rclone --config /tmp/rclone.conf copy gdrive:GOANGEL/cache/stages/finalize/ cache/stages/finalize/ \
-    --transfers 8 --checkers 16 --ignore-existing 2>&1 | tail -2 || true
+    --transfers 8 --checkers 16 --ignore-existing --ignore-errors 2>&1 | tail -2 || true
 
   echo "  🔍 Vérification :"
   for f in cache/historical.pkl cache/stages/features.pkl; do

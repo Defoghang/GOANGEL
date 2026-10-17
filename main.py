@@ -1203,12 +1203,11 @@ def _finalize_ml_one(model_name: str) -> None:
     from finalize_split import load_context, save_partial
     from sklearn.metrics import log_loss
 
+    partial_path = Path(CACHE_DIR) / "stages" / "finalize" / f"{model_name}.pkl"
+    if partial_path.exists() and partial_path.stat().st_size > 100:
+        stage_print(f"📦 {model_name} déjà finalisé (partial présent)")
+        return
     stage_print(f"🔧 FINALIZE ML — {model_name}")
-    if ck_has_step(ml_key(model_name), STEP_CALIBRATED):
-        ck = ck_load_step(ml_key(model_name), STEP_CALIBRATED)
-        if ck and ck.get("payload"):
-            stage_print(f"📦 {model_name} déjà finalisé (checkpoint)")
-            return
     ctx = load_context()
     if ctx is None:
         raise RuntimeError("Contexte finalize absent — lancer finalize_prep d'abord")
@@ -1309,12 +1308,12 @@ def _finalize_pb_one(stage_name: str, class_name: str) -> None:
         _PB_MODEL_ORDER,
     )
 
-    stage_print(f"🔧 FINALIZE PB — {class_name}")
-
-    if ck_has_step(pb_key(class_name), STEP_FINALIZED):
-        stage_print(f"📦 {class_name} déjà finalisé (checkpoint universel)")
+    partial_path = Path(CACHE_DIR) / "stages" / "finalize" / f"{class_name}.pkl"
+    if partial_path.exists() and partial_path.stat().st_size > 100:
+        stage_print(f"📦 {class_name} déjà finalisé (partial présent)")
         return
 
+    stage_print(f"🔧 FINALIZE PB — {class_name}")
     ctx = load_context()
     if ctx is None:
         raise RuntimeError("Contexte finalize absent — lancer finalize_prep d'abord")
